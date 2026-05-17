@@ -35,7 +35,7 @@ subprojects {
     }
 
     dependencies {
-        // Lombok — 모든 모듈 공통 (BaseEntity 등에서 @Getter 사용)
+        // Lombok — 모든 모듈 공통 (BaseJpaEntity 등에서 @Getter 사용)
         "compileOnly"("org.projectlombok:lombok")
         "annotationProcessor"("org.projectlombok:lombok")
         "testCompileOnly"("org.projectlombok:lombok")
@@ -56,7 +56,7 @@ subprojects {
         useJUnitPlatform()
         // DB·Redis 컨테이너를 공유하는 통합 테스트의 격리를 위해 직렬 실행
         maxParallelForks = 1
-        // BaseEntity ZonedDateTime 등 시간 일관성
+        // BaseJpaEntity ZonedDateTime 등 시간 일관성
         systemProperty("user.timezone", "Asia/Seoul")
         // jpa.yml / redis.yml 의 test 프로파일 블록 활성
         systemProperty("spring.profiles.active", "test")

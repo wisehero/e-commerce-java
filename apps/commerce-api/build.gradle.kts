@@ -11,6 +11,8 @@ dependencies {
     implementation(project(":supports:jackson"))
     implementation(project(":supports:monitoring"))
     implementation(project(":supports:logging"))
+
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.4.1")
 }
 
 tasks.bootJar { enabled = true }

@@ -64,11 +64,34 @@ interfaces → application → domain ← infrastructure
 - JpaRepository는 **인프라 내부에 숨긴다**. 다른 계층에서 import 금지.
 - `@Entity`, `@Table`, `@Column` 등 JPA 어노테이션은 **infrastructure 패키지 안에서만** 등장한다.
 
-## 7) DTO 경계
+## 7) 경계 객체 (Request / Command / Info / Response)
 
-- Controller 입출력은 Dto (interfaces 계층)만 사용. 도메인 객체를 외부에 노출하지 않는다.
-- application 계층 출력은 `Info` 객체 (도메인 객체와 분리된 표현). Controller가 Info → Dto로 매핑.
-- 도메인 → Info, Info → Dto 두 단계 매핑. 도메인을 외부 포맷에 끌려다니지 않게 격리.
+경계마다 어휘를 다르게 둬서 방향성과 의도를 이름에 박는다. 막연한 “Dto” 단어는 쓰지 않는다.
+
+### 네이밍
+
+| 계층 | 입력 | 출력 |
+|---|---|---|
+| **interfaces** (HTTP 경계) | `*Request` | `*Response` |
+| **application** (Use Case 경계) | `*Command` (상태 변경), `*Criteria` (조회) | `*Info` |
+| **domain** | — (경계 객체 없음) | — |
+
+### 흐름
+
+```
+Request  →  Command/Criteria  →  Domain  →  Info  →  Response
+   (interfaces)   (application)    (domain)  (application)  (interfaces)
+```
+
+- Controller는 `*Request`를 받아 `*Command`/`*Criteria`로 변환해 Facade에 전달.
+- Facade는 도메인 모델로 작업 후 `*Info`를 반환.
+- Controller는 `*Info`를 `*Response`로 매핑해 응답.
+
+### 원칙
+
+- 도메인 객체를 외부에 직접 노출하지 않는다. 항상 Info → Response 두 단계 매핑.
+- 도메인은 Request·Response·Command·Criteria·Info 어느 것에도 의존하지 않는다.
+- 도메인을 외부 포맷에 끌려다니지 않게 격리.
 
 ## 8) Value Object 적극 활용
 

@@ -1,4 +1,4 @@
-package com.commerce.domain;
+package com.commerce.infrastructure.jpa;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.GeneratedValue;
@@ -16,7 +16,7 @@ import java.time.ZonedDateTime;
  */
 @MappedSuperclass
 @Getter
-public abstract class BaseEntity {
+public abstract class BaseJpaEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

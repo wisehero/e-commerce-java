@@ -44,8 +44,8 @@ subprojects {
         // @ConfigurationProperties 메타데이터 생성 (IDE 자동완성·application.yml 키 검증)
         "annotationProcessor"("org.springframework.boot:spring-boot-configuration-processor")
 
-        // Bean Validation (hibernate-validator) 런타임 제공 — @Valid/@NotNull 등 활성
-        "runtimeOnly"("org.springframework.boot:spring-boot-starter-validation")
+        // Bean Validation — @Valid/@NotBlank 등 (API는 컴파일 타임, hibernate-validator는 런타임)
+        "implementation"("org.springframework.boot:spring-boot-starter-validation")
 
         "testImplementation"("org.springframework.boot:spring-boot-starter-test")
         // JUnit 5 launcher (IntelliJ가 테스트 발견하는 데 필요)

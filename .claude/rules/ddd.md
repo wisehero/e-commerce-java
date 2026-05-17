@@ -27,6 +27,17 @@ interfaces → application → domain ← infrastructure
 - application은 domain만 알고 infrastructure 구현체에 직접 의존하지 않는다 (스프링 DI로 인터페이스 주입).
 - interfaces는 application의 Facade만 호출한다. domain Service를 직접 호출하지 않는다.
 
+### DIP 위반 금지 (의존성 역전 원칙)
+
+고수준(domain·application)은 저수준(infrastructure)에 직접 의존하지 않는다. 둘 다 domain이 정의한 abstraction(인터페이스)에 의존한다.
+
+- 새 외부 의존이 생기면: **먼저 domain에 인터페이스 정의 → infrastructure에 구현**. 반대 방향 금지.
+- 위반 예시:
+  - domain Service가 `RestTemplate`, `KafkaTemplate`, `JpaRepository` 같은 인프라 타입을 직접 import.
+  - application Facade가 `XxxRepositoryImpl` 같은 **구체 클래스**를 직접 import (인터페이스만 허용).
+  - infrastructure가 application·interfaces 타입을 import.
+- 외부 시스템(메시징·HTTP·캐시·검색엔진 등)도 동일: domain에 `XxxPublisher`, `XxxClient` 같은 인터페이스 정의 후 infrastructure에서 구현.
+
 ## 3) 도메인 모델은 자기 invariant를 스스로 지킨다
 
 - 도메인 모델은 **순수 자바 class**. JPA 어노테이션(`@Entity`, `@Id`, `@Column`, `@Table` ...) 금지.

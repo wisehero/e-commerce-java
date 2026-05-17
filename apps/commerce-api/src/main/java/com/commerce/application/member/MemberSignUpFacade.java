@@ -10,7 +10,7 @@ import com.commerce.domain.member.PasswordHasher;
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 
 @Service

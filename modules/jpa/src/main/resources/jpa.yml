@@ -1,0 +1,104 @@
+spring:
+  jpa:
+    # 영속성 컨텍스트를 뷰 렌더링까지 유지하지 않는다 (지연 로딩 LazyInitException 위험을 컨트롤러에서 노출)
+    open-in-view: false
+    # JPA가 DDL 자동 생성 비활성. ddl-auto와 별개로 schema-*.sql 같은 스크립트 생성 차단
+    generate-ddl: false
+    # 콘솔에 SQL 출력 끔 (로컬에서만 켬)
+    show-sql: false
+    hibernate:
+      # 운영 기본값: 스키마 자동 변경 금지. 마이그레이션 도구로 관리
+      ddl-auto: none
+    properties:
+      hibernate:
+        # 컬렉션/연관 엔티티 IN 절 배치 fetch 크기 — N+1 완화
+        default_batch_fetch_size: 100
+        # LocalDateTime/Instant 등 시간 타입을 UTC로 정규화 저장
+        timezone.default_storage: NORMALIZE_UTC
+        # JDBC 레벨에서 시간 컬럼을 UTC 기준으로 송수신
+        jdbc.time_zone: UTC
+
+# 비표준 namespace. spring.datasource.* 대신 mysql-jpa 전용 DataSource 빈을 수동 구성하기 위함
+datasource:
+  mysql-jpa:
+    main:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      jdbc-url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}
+      username: ${MYSQL_USER}
+      password: "${MYSQL_PWD}"
+      pool-name: mysql-main-pool
+      maximum-pool-size: 40                # HikariCP 최대 커넥션 수
+      minimum-idle: 30                     # 최소 유휴 커넥션 수 (보통 max와 동일하게 두는 게 권장)
+      connection-timeout: 3000             # 커넥션 획득 대기 시간(ms) (default: 3000 = 3s)
+      validation-timeout: 5000             # 커넥션 유효성 검사 타임아웃(ms) (default: 5000 = 5s)
+      keepalive-time: 0                    # 커넥션 유지 ping 주기(ms). 0 = 비활성 (default: 0)
+      max-lifetime: 1800000                # 커넥션 최대 생존 시간(ms) (default: 1800000 = 30min)
+      leak-detection-threshold: 0          # 누수 감지: ms 내 반환되지 않으면 경고 로그. 0=비활성 (default: 0)
+      initialization-fail-timeout: 1       # 초기 DB 연결 실패 시 즉시 예외 (default: -1 = 무한 재시도)
+      data-source-properties:
+        rewriteBatchedStatements: true     # MySQL 드라이버 배치 INSERT/UPDATE 합치기 — 성능 향상
+
+---
+spring.config.activate.on-profile: local
+
+spring:
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: create
+
+datasource:
+  mysql-jpa:
+    main:
+      jdbc-url: jdbc:mysql://localhost:3307/loopers
+      username: application
+      password: application
+
+---
+spring.config.activate.on-profile: test
+
+spring:
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: create
+
+datasource:
+  mysql-jpa:
+    main:
+      maximum-pool-size: 10
+      minimum-idle: 5
+
+---
+spring.config.activate.on-profile: dev
+
+spring:
+  jpa:
+    show-sql: true
+
+datasource:
+  mysql-jpa:
+    main:
+      jdbc-url: jdbc:mysql://localhost:3307/loopers
+      username: application
+      password: application
+
+---
+spring.config.activate.on-profile: qa
+
+datasource:
+  mysql-jpa:
+    main:
+      jdbc-url: jdbc:mysql://localhost:3307/loopers
+      username: application
+      password: application
+
+---
+spring.config.activate.on-profile: prd
+
+datasource:
+  mysql-jpa:
+    main:
+      jdbc-url: jdbc:mysql://localhost:3307/loopers
+      username: application
+      password: application

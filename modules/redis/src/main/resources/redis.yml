@@ -1,0 +1,38 @@
+spring:
+  data:
+    redis:
+      repositories:
+        # @RedisHash 기반 Spring Data Redis Repositories 자동 스캔 비활성. RedisTemplate 직접 사용
+        enabled: false
+
+# 비표준 namespace. master/replicas 구조의 커스텀 Redis 클라이언트 빈을 수동 구성하기 위함
+datasource:
+  redis:
+    database: 0
+    master:
+      host: ${REDIS_MASTER_HOST}
+      port: ${REDIS_MASTER_PORT}
+    replicas:
+      - host: ${REDIS_REPLICA_1_HOST}
+        port: ${REDIS_REPLICA_1_PORT}
+
+---
+spring.config.activate.on-profile: local, test
+
+datasource:
+  redis:
+    master:
+      host: localhost
+      port: 6379
+    replicas:
+      - host: localhost
+        port: 6380
+
+---
+spring.config.activate.on-profile: dev
+
+---
+spring.config.activate.on-profile: qa
+
+---
+spring.config.activate.on-profile: prd

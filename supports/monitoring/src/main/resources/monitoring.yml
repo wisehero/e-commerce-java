@@ -1,0 +1,48 @@
+management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        # http.server.requests 메트릭에 대해 히스토그램 버킷 생성 — Grafana 분위수 시각화에 필요
+        http.server.requests: true
+    tags:
+      application:
+        # 모든 메트릭에 application 태그 자동 부여
+        ${spring.application.name}
+  endpoints:
+    web:
+      exposure:
+        # HTTP로 노출할 actuator 엔드포인트 화이트리스트
+        include:
+          - health
+          - prometheus
+  endpoint:
+    health:
+      probes:
+        # K8s liveness/readiness 프로브 엔드포인트 활성화
+        enabled: true
+      group:
+        liveness:
+          show-components: always
+          include:
+            - livenessState
+        readiness:
+          show-components: always
+    prometheus:
+      # /actuator/prometheus 는 읽기 전용으로 제한
+      access: read_only
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+  server:
+    # actuator를 별도 포트로 분리. API 트래픽과 모니터링 트래픽 격리 + 외부 노출 제한 용이
+    # (기본 8081은 기존 product-service가 점유 중이라 8091로 변경)
+    port: 8091
+  observations:
+    annotations:
+      # @Observed 등 Micrometer Observation 어노테이션 처리 활성
+      enabled: true
+    key-values:
+      application:
+        ${spring.application.name}

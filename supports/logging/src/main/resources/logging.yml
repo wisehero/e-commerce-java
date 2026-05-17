@@ -1,0 +1,2 @@
+# Spring Boot가 사용하는 logback 설정 파일 경로 지정
+logging.config: classpath:logback/logback.xml

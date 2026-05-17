@@ -17,7 +17,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.commerce.application.member.MemberInfo;
 import com.commerce.application.member.MemberSignUpFacade;
-import com.commerce.domain.member.MemberRole;
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
 
@@ -41,7 +40,7 @@ class MemberControllerV1Test {
         // given
         SignUpRequest request = new SignUpRequest("user@example.com", "password123", "오딘");
         given(memberSignUpFacade.signUp(any()))
-            .willReturn(new MemberInfo(1L, "user@example.com", "오딘", MemberRole.USER));
+            .willReturn(new MemberInfo(1L, "user@example.com", "오딘", "USER"));
 
         // when & then
         mockMvc.perform(post("/api/v1/members")

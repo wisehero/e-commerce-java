@@ -13,7 +13,7 @@ public record SignUpResponse(
             info.id(),
             info.email(),
             info.nickname(),
-            info.role().name()
+            info.role()
         );
     }
 }

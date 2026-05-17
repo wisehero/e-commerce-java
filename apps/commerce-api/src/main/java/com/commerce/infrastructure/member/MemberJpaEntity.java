@@ -1,10 +1,10 @@
 package com.commerce.infrastructure.member;
 
-import com.commerce.domain.BaseEntity;
 import com.commerce.domain.member.Email;
 import com.commerce.domain.member.Member;
 import com.commerce.domain.member.MemberRole;
 import com.commerce.domain.member.Password;
+import com.commerce.infrastructure.jpa.BaseJpaEntity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -21,7 +21,7 @@ import lombok.Getter;
     @UniqueConstraint(name = "uk_members_nickname", columnNames = "nickname")
 })
 @Getter
-public class MemberJpaEntity extends BaseEntity {
+public class MemberJpaEntity extends BaseJpaEntity {
 
     @Column(name = "email", nullable = false, length = 320)
     private String email;

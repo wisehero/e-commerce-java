@@ -19,7 +19,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.commerce.domain.member.Email;
 import com.commerce.domain.member.Member;
 import com.commerce.domain.member.MemberRepository;
-import com.commerce.domain.member.MemberRole;
 import com.commerce.domain.member.PasswordHasher;
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
@@ -61,7 +60,7 @@ class MemberSignUpFacadeTest {
 
             // then
             assertThat(info).usingRecursiveComparison()
-                .isEqualTo(new MemberInfo(42L, "user@example.com", "오딘", MemberRole.USER));
+                .isEqualTo(new MemberInfo(42L, "user@example.com", "오딘", "USER"));
         }
 
         @Test

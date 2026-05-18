@@ -38,7 +38,7 @@ class LayerDependencyTest {
                     .should().dependOnClassesThat().resideInAnyPackage(
                             "com.commerce.domain..",
                             "com.commerce.infrastructure..")
-                    .because("interfaces는 application의 Facade와 Info만 사용한다")
+                    .because("interfaces는 application의 UseCase와 Info만 사용한다")
                     .allowEmptyShould(true);
 
     @ArchTest

@@ -37,7 +37,7 @@ class LocationByAnnotationTest {
             classes().that()
                     .areAnnotatedWith("org.springframework.transaction.annotation.Transactional")
                     .should().resideInAPackage("com.commerce.application..")
-                    .because("트랜잭션 경계는 application Facade — 다른 계층에 @Transactional 금지")
+                    .because("트랜잭션 경계는 application UseCase — 다른 계층에 @Transactional 금지")
                     .allowEmptyShould(true);
 
     @ArchTest
@@ -45,7 +45,7 @@ class LocationByAnnotationTest {
             methods().that()
                     .areAnnotatedWith("org.springframework.transaction.annotation.Transactional")
                     .should().beDeclaredInClassesThat().resideInAPackage("com.commerce.application..")
-                    .because("트랜잭션 경계는 application Facade — 다른 계층 메서드에 @Transactional 금지")
+                    .because("트랜잭션 경계는 application UseCase — 다른 계층 메서드에 @Transactional 금지")
                     .allowEmptyShould(true);
 
     @ArchTest

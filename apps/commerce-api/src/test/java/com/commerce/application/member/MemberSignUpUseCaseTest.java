@@ -24,7 +24,7 @@ import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
 
 @ExtendWith(MockitoExtension.class)
-class MemberSignUpFacadeTest {
+class MemberSignUpUseCaseTest {
 
     @Mock
     private MemberRepository memberRepository;
@@ -33,7 +33,7 @@ class MemberSignUpFacadeTest {
     private PasswordHasher passwordHasher;
 
     @InjectMocks
-    private MemberSignUpFacade facade;
+    private MemberSignUpUseCase useCase;
 
     @Nested
     @DisplayName("회원가입")
@@ -56,7 +56,7 @@ class MemberSignUpFacadeTest {
             });
 
             // when
-            MemberInfo info = facade.signUp(command);
+            MemberInfo info = useCase.signUp(command);
 
             // then
             assertThat(info).usingRecursiveComparison()
@@ -70,7 +70,7 @@ class MemberSignUpFacadeTest {
             given(memberRepository.existsByEmail(new Email("user@example.com"))).willReturn(true);
 
             // when & then
-            assertThatThrownBy(() -> facade.signUp(command))
+            assertThatThrownBy(() -> useCase.signUp(command))
                 .isInstanceOf(CoreException.class)
                 .hasMessage("이미 가입된 이메일입니다.")
                 .extracting("errorType").isEqualTo(ErrorType.CONFLICT);
@@ -84,7 +84,7 @@ class MemberSignUpFacadeTest {
             given(memberRepository.existsByNickname("오딘")).willReturn(true);
 
             // when & then
-            assertThatThrownBy(() -> facade.signUp(command))
+            assertThatThrownBy(() -> useCase.signUp(command))
                 .isInstanceOf(CoreException.class)
                 .hasMessage("이미 사용 중인 닉네임입니다.")
                 .extracting("errorType").isEqualTo(ErrorType.CONFLICT);
@@ -98,7 +98,7 @@ class MemberSignUpFacadeTest {
                 new MemberSignUpCommand("abc", "password123", "오딘");
 
             // when
-            assertThatThrownBy(() -> facade.signUp(invalid))
+            assertThatThrownBy(() -> useCase.signUp(invalid))
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
 
@@ -119,7 +119,7 @@ class MemberSignUpFacadeTest {
                 .willAnswer(invocation -> invocation.getArgument(0));
 
             // when
-            facade.signUp(command);
+            useCase.signUp(command);
 
             // then
             ArgumentCaptor<Member> captor = ArgumentCaptor.forClass(Member.class);
@@ -135,7 +135,7 @@ class MemberSignUpFacadeTest {
             given(memberRepository.existsByEmail(any())).willReturn(true);
 
             // when
-            assertThatThrownBy(() -> facade.signUp(command))
+            assertThatThrownBy(() -> useCase.signUp(command))
                 .isInstanceOf(CoreException.class);
 
             // then

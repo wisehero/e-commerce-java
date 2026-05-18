@@ -16,7 +16,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.commerce.application.member.MemberInfo;
-import com.commerce.application.member.MemberSignUpFacade;
+import com.commerce.application.member.MemberSignUpUseCase;
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
 
@@ -32,14 +32,14 @@ class MemberControllerV1Test {
     private ObjectMapper objectMapper;
 
     @MockitoBean
-    private MemberSignUpFacade memberSignUpFacade;
+    private MemberSignUpUseCase memberSignUpUseCase;
 
     @Test
     @DisplayName("유효한 요청이면 200 OK + ApiResponse.success를 반환한다")
     void should_returnApiResponseSuccess_when_validRequest() throws Exception {
         // given
         SignUpRequest request = new SignUpRequest("user@example.com", "password123", "오딘");
-        given(memberSignUpFacade.signUp(any()))
+        given(memberSignUpUseCase.signUp(any()))
             .willReturn(new MemberInfo(1L, "user@example.com", "오딘", "USER"));
 
         // when & then
@@ -71,11 +71,11 @@ class MemberControllerV1Test {
     }
 
     @Test
-    @DisplayName("Facade가 CONFLICT를 던지면 409 + ApiResponse.fail")
-    void should_returnConflict_when_facadeThrowsConflict() throws Exception {
+    @DisplayName("UseCase가 CONFLICT를 던지면 409 + ApiResponse.fail")
+    void should_returnConflict_when_useCaseThrowsConflict() throws Exception {
         // given
         SignUpRequest request = new SignUpRequest("user@example.com", "password123", "오딘");
-        given(memberSignUpFacade.signUp(any()))
+        given(memberSignUpUseCase.signUp(any()))
             .willThrow(new CoreException(ErrorType.CONFLICT, "이미 가입된 이메일입니다."));
 
         // when & then
@@ -89,11 +89,11 @@ class MemberControllerV1Test {
     }
 
     @Test
-    @DisplayName("Facade가 BAD_REQUEST를 던지면 400 + ApiResponse.fail")
-    void should_returnBadRequest_when_facadeThrowsBadRequest() throws Exception {
+    @DisplayName("UseCase가 BAD_REQUEST를 던지면 400 + ApiResponse.fail")
+    void should_returnBadRequest_when_useCaseThrowsBadRequest() throws Exception {
         // given
         SignUpRequest request = new SignUpRequest("invalid-email", "password123", "오딘");
-        given(memberSignUpFacade.signUp(any()))
+        given(memberSignUpUseCase.signUp(any()))
             .willThrow(new CoreException(ErrorType.BAD_REQUEST, "이메일 형식이 올바르지 않습니다."));
 
         // when & then

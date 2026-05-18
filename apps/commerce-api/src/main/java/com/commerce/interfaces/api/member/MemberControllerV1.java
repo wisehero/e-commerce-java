@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.commerce.application.member.MemberInfo;
-import com.commerce.application.member.MemberSignUpFacade;
+import com.commerce.application.member.MemberSignUpUseCase;
 import com.commerce.interfaces.api.ApiResponse;
 
 import jakarta.validation.Valid;
@@ -17,11 +17,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class MemberControllerV1 {
 
-    private final MemberSignUpFacade memberSignUpFacade;
+    private final MemberSignUpUseCase memberSignUpUseCase;
 
     @PostMapping
     public ApiResponse<SignUpResponse> signUp(@Valid @RequestBody SignUpRequest request) {
-        MemberInfo info = memberSignUpFacade.signUp(request.toCommand());
+        MemberInfo info = memberSignUpUseCase.signUp(request.toCommand());
         return ApiResponse.success(SignUpResponse.from(info));
     }
 }

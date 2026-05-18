@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-public class MemberSignUpFacade {
+public class MemberSignUpUseCase {
 
     private final MemberRepository memberRepository;
     private final PasswordHasher passwordHasher;

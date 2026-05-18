@@ -29,7 +29,7 @@ interfaces → application → domain ← infrastructure
 ```
 
 - `interfaces`: Controller·Dto (HTTP 경계)
-- `application`: Facade·Info (**트랜잭션 경계**)
+- `application`: UseCase·Info (**트랜잭션 경계**)
 - `domain`: 순수 자바. **JPA 어노테이션 금지, 다른 계층 import 금지**
 - `infrastructure`: JpaEntity·JpaRepository·RepositoryImpl
 - `support`: CoreException·ErrorType 등 횡단 보조
@@ -38,8 +38,8 @@ interfaces → application → domain ← infrastructure
 
 - 도메인 모델 ↔ JPA 엔티티는 **별도 클래스**로 분리한다.
 - JPA 연관관계 어노테이션(`@ManyToOne` 등) **전면 금지**. 상대는 ID로만 참조.
-- 1 트랜잭션 = 1 Aggregate 수정. `@Transactional`은 application Facade에.
-- Controller는 Facade만 호출. Domain Service 직접 호출 금지.
+- 1 트랜잭션 = 1 Aggregate 수정. `@Transactional`은 application UseCase에.
+- Controller는 UseCase만 호출. Domain Service 직접 호출 금지.
 - 비즈니스 용어 = 코드 명칭 (유비쿼터스 언어).
 
 ## 규칙 인덱스

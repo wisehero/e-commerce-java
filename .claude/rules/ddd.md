@@ -9,7 +9,7 @@ CLAUDE.md "DDD 핵심 원칙"의 상세 규칙. Java 코드 작업 시 반드시
 | 계층 | 패키지 | 책임 |
 |---|---|---|
 | **interfaces** | `com.commerce.interfaces.api.{도메인}` | HTTP 경계: Controller, Dto, ControllerAdvice. 외부 표현. |
-| **application** | `com.commerce.application.{도메인}` | 유스케이스 단위 오케스트레이션: Facade, Info. **트랜잭션 경계**. |
+| **application** | `com.commerce.application.{도메인}` | 유스케이스 단위 오케스트레이션: UseCase, Info. **트랜잭션 경계**. |
 | **domain** | `com.commerce.domain.{도메인}` | 비즈니스 규칙 핵심: Model(엔티티/VO), 도메인 Service, Repository **인터페이스**. |
 | **infrastructure** | `com.commerce.infrastructure.{도메인}` | 영속화 어댑터: JpaEntity, JpaRepository, RepositoryImpl. 도메인 인터페이스를 구현. |
 | **support** | `com.commerce.support.{관심사}` | CoreException, ErrorType 등 횡단 보조. |
@@ -25,7 +25,7 @@ interfaces → application → domain ← infrastructure
 - **domain은 어디도 import 하지 않는다** (infrastructure, application, interfaces 모두 X). 순수 자바만 허용 (JPA 어노테이션도 금지).
 - **infrastructure는 domain의 Repository 인터페이스를 구현**하고, 별도 JpaEntity로 매핑한다. 외부엔 domain 타입만 노출.
 - application은 domain만 알고 infrastructure 구현체에 직접 의존하지 않는다 (스프링 DI로 인터페이스 주입).
-- interfaces는 application의 Facade만 호출한다. domain Service를 직접 호출하지 않는다.
+- interfaces는 application의 UseCase만 호출한다. domain Service를 직접 호출하지 않는다.
 
 ### DIP 위반 금지 (의존성 역전 원칙)
 
@@ -34,7 +34,7 @@ interfaces → application → domain ← infrastructure
 - 새 외부 의존이 생기면: **먼저 domain에 인터페이스 정의 → infrastructure에 구현**. 반대 방향 금지.
 - 위반 예시:
   - domain Service가 `RestTemplate`, `KafkaTemplate`, `JpaRepository` 같은 인프라 타입을 직접 import.
-  - application Facade가 `XxxRepositoryImpl` 같은 **구체 클래스**를 직접 import (인터페이스만 허용).
+  - application UseCase가 `XxxRepositoryImpl` 같은 **구체 클래스**를 직접 import (인터페이스만 허용).
   - infrastructure가 application·interfaces 타입을 import.
 - 외부 시스템(메시징·HTTP·캐시·검색엔진 등)도 동일: domain에 `XxxPublisher`, `XxxClient` 같은 인터페이스 정의 후 infrastructure에서 구현.
 
@@ -47,7 +47,7 @@ interfaces → application → domain ← infrastructure
 
 ## 4) Aggregate Root 단위 트랜잭션
 
-- 트랜잭션 경계는 application의 Facade 메서드 단위. `@Transactional`은 Facade에 둔다.
+- 트랜잭션 경계는 application의 UseCase 메서드 단위. `@Transactional`은 UseCase에 둔다.
 - 하나의 트랜잭션 안에서는 하나의 Aggregate만 수정한다 (여러 Aggregate 동시 수정 금지).
 
 ## 5) 엔티티 연관관계 — JPA 연관관계 어노테이션 금지, 간접 참조(ID) 사용
@@ -61,7 +61,7 @@ interfaces → application → domain ← infrastructure
   - LazyInitializationException · N+1 쿼리 같은 ORM 함정을 원천 회피.
   - 트랜잭션을 작고 명시적으로 유지 가능.
   - 데이터 흐름이 코드에서 한눈에 드러난다 (필요한 시점에 application 계층이 Repository를 명시 호출해 조립).
-- **연관 데이터가 필요할 때**: application Facade에서 각 Repository를 순차 호출해 `Info` 객체로 조립한다. domain·infrastructure 계층이 다른 Aggregate를 끌어오지 않는다.
+- **연관 데이터가 필요할 때**: application UseCase에서 각 Repository를 순차 호출해 `Info` 객체로 조립한다. domain·infrastructure 계층이 다른 Aggregate를 끌어오지 않는다.
 - 컬렉션 형태 자식(value 성격의 자식 엔티티)이 정말 필요하면 같은 Aggregate 내부에 한해 `@ElementCollection` 또는 `@Embedded` 활용 검토. 그래도 연관 어노테이션은 쓰지 않는다.
 
 ## 6) Repository 패턴 (도메인/영속 분리)
@@ -94,8 +94,8 @@ Request  →  Command/Criteria  →  Domain  →  Info  →  Response
    (interfaces)   (application)    (domain)  (application)  (interfaces)
 ```
 
-- Controller는 `*Request`를 받아 `*Command`/`*Criteria`로 변환해 Facade에 전달.
-- Facade는 도메인 모델로 작업 후 `*Info`를 반환.
+- Controller는 `*Request`를 받아 `*Command`/`*Criteria`로 변환해 UseCase에 전달.
+- UseCase는 도메인 모델로 작업 후 `*Info`를 반환.
 - Controller는 `*Info`를 `*Response`로 매핑해 응답.
 
 ### 원칙

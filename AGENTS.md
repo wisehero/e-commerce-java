@@ -2,7 +2,7 @@
 
 ## 최우선
 
-**세션 시작 시 `.claude/rules/behavior.md`를 반드시 읽는다.** 파일 수정 권한, 제안 형식, 대화 방식 등 모든 작업 방식이 거기에 정의되어 있다.
+**세션 시작 시 `.agents/rules/behavior.md`를 반드시 읽는다.** 파일 수정 권한, 제안 형식, 대화 방식 등 모든 작업 방식이 거기에 정의되어 있다.
 
 ## 프로젝트 개요
 
@@ -18,7 +18,7 @@ Java 25 + Spring Boot 4 기반 이커머스 백엔드. Gradle 멀티 모듈.
 
 ## DDD 핵심 원칙 (요약)
 
-상세 규칙과 예시는 `.claude/rules/ddd.md`를 참조한다.
+상세 규칙과 예시는 `.agents/rules/ddd.md`를 참조한다.
 
 ### 5계층 + 의존성 방향
 
@@ -44,6 +44,6 @@ interfaces -> application -> domain <- infrastructure
 
 ## 규칙 인덱스
 
-- 작업 방식: `.claude/rules/behavior.md` (**세션 시작 시 필수**)
-- DDD 코딩: `.claude/rules/ddd.md` (Java 작업 전 필수)
-- 커밋: `.claude/rules/commit.md` (`/commit` 명령으로 자동 적용)
+- 작업 방식: `.agents/rules/behavior.md` (**세션 시작 시 필수**)
+- DDD 코딩: `.agents/rules/ddd.md` (Java 작업 전 필수)
+- 커밋: `.agents/rules/commit.md` (`/commit` 명령으로 자동 적용)

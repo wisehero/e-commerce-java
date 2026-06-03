@@ -1,3 +1,5 @@
+import com.diffplug.gradle.spotless.SpotlessExtension
+
 val projectGroup: String by project
 val projectVersion: String by project
 val javaToolchainVersion: String by project
@@ -7,20 +9,47 @@ plugins {
     java
     id("org.springframework.boot") apply false
     id("io.spring.dependency-management") apply false
+    id("com.diffplug.spotless") apply false
+}
+
+fun Project.configureSpotless() {
+    extensions.configure<SpotlessExtension> {
+        java {
+            target("src/**/*.java")
+            trimTrailingWhitespace()
+            endWithNewline()
+        }
+
+        kotlinGradle {
+            target("*.gradle.kts")
+            ktlint()
+            trimTrailingWhitespace()
+            endWithNewline()
+        }
+
+        format("yaml") {
+            target("*.yml", "*.yaml", "src/**/*.yml", "src/**/*.yaml")
+            trimTrailingWhitespace()
+            endWithNewline()
+        }
+    }
 }
 
 allprojects {
     group = projectGroup
     version = projectVersion
+
+    repositories {
+        mavenCentral()
+    }
+
+    apply(plugin = "com.diffplug.spotless")
+    configureSpotless()
 }
 
 subprojects {
     apply(plugin = "java")
     apply(plugin = "io.spring.dependency-management")
-
-    repositories {
-        mavenCentral()
-    }
 
     java {
         toolchain {

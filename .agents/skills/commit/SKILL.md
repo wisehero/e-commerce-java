@@ -1,11 +1,11 @@
 ---
-name: "source-command-commit"
-description: "변경사항을 검토하고 프로젝트 커밋 컨벤션에 맞춰 커밋 생성"
+name: "commit"
+description: "이 프로젝트의 커밋 규칙에 따라 변경사항을 검토하고 커밋 메시지를 작성한 뒤 사용자 확인 후 커밋 생성"
 ---
 
-# source-command-commit
+# commit
 
-Use this skill when the user asks to run the migrated source command `commit`.
+Use this skill when the user asks to commit local changes in this project, including `/commit` requests.
 
 ## Command Template
 

@@ -1,0 +1,195 @@
+package com.commerce.interfaces.api.cart;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.List;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import com.commerce.application.cart.CartAddItemUseCase;
+import com.commerce.application.cart.CartChangeQuantityUseCase;
+import com.commerce.application.cart.CartClearUseCase;
+import com.commerce.application.cart.CartInfo;
+import com.commerce.application.cart.CartLineInfo;
+import com.commerce.application.cart.CartLineStatus;
+import com.commerce.application.cart.CartRemoveItemUseCase;
+import com.commerce.application.cart.CartViewUseCase;
+import com.commerce.support.error.CoreException;
+import com.commerce.support.error.ErrorType;
+
+@WebMvcTest(CartControllerV1.class)
+class CartControllerV1Test {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private CartViewUseCase cartViewUseCase;
+    @MockitoBean
+    private CartAddItemUseCase cartAddItemUseCase;
+    @MockitoBean
+    private CartChangeQuantityUseCase cartChangeQuantityUseCase;
+    @MockitoBean
+    private CartRemoveItemUseCase cartRemoveItemUseCase;
+    @MockitoBean
+    private CartClearUseCase cartClearUseCase;
+
+    private CartInfo sampleCart() {
+        return new CartInfo(1L,
+            List.of(new CartLineInfo(10L, 2, "맨투맨", "색상:빨강", 8000L, 16000L, CartLineStatus.PURCHASABLE)),
+            16000L);
+    }
+
+    @Nested
+    @DisplayName("장바구니 조회 GET /api/v1/carts")
+    class View {
+
+        @Test
+        @DisplayName("200 OK + enrich된 장바구니를 반환한다")
+        void should_returnCart_when_view() throws Exception {
+            given(cartViewUseCase.view(1L)).willReturn(sampleCart());
+
+            mockMvc.perform(get("/api/v1/carts").param("memberId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.result").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.cartTotal").value(16000))
+                .andExpect(jsonPath("$.data.lines[0].skuId").value(10))
+                .andExpect(jsonPath("$.data.lines[0].lineSubtotal").value(16000))
+                .andExpect(jsonPath("$.data.lines[0].status").value("PURCHASABLE"));
+        }
+
+        @Test
+        @DisplayName("memberId가 없으면 400")
+        void should_return400_when_memberIdMissing() throws Exception {
+            mockMvc.perform(get("/api/v1/carts"))
+                .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Nested
+    @DisplayName("담기 POST /api/v1/carts/items")
+    class AddItem {
+
+        @Test
+        @DisplayName("유효 요청이면 200 OK + 장바구니를 반환한다")
+        void should_returnCart_when_validRequest() throws Exception {
+            given(cartAddItemUseCase.addItem(any())).willReturn(sampleCart());
+
+            String body = """
+                { "memberId": 1, "skuId": 10, "quantity": 2 }
+                """;
+
+            mockMvc.perform(post("/api/v1/carts/items")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.result").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.lines[0].skuId").value(10));
+        }
+
+        @Test
+        @DisplayName("수량이 0이면 400 + FAIL, UseCase 미호출")
+        void should_return400_when_quantityZero() throws Exception {
+            String body = """
+                { "memberId": 1, "skuId": 10, "quantity": 0 }
+                """;
+
+            mockMvc.perform(post("/api/v1/carts/items")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.meta.result").value("FAIL"));
+
+            then(cartAddItemUseCase).should(never()).addItem(any());
+        }
+
+        @Test
+        @DisplayName("도메인 NOT_FOUND(회원 없음) → 404 + FAIL")
+        void should_return404_when_domainNotFound() throws Exception {
+            willThrow(new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 회원입니다."))
+                .given(cartAddItemUseCase).addItem(any());
+
+            String body = """
+                { "memberId": 999, "skuId": 10, "quantity": 2 }
+                """;
+
+            mockMvc.perform(post("/api/v1/carts/items")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.meta.result").value("FAIL"))
+                .andExpect(jsonPath("$.meta.errorCode").value("Not Found"))
+                .andExpect(jsonPath("$.meta.message").value("존재하지 않는 회원입니다."));
+        }
+    }
+
+    @Nested
+    @DisplayName("수량 변경 PATCH /api/v1/carts/items/{skuId}")
+    class ChangeQuantity {
+
+        @Test
+        @DisplayName("유효 요청이면 200 OK + 장바구니를 반환한다")
+        void should_returnCart_when_validRequest() throws Exception {
+            given(cartChangeQuantityUseCase.changeQuantity(any())).willReturn(sampleCart());
+
+            String body = """
+                { "memberId": 1, "quantity": 5 }
+                """;
+
+            mockMvc.perform(patch("/api/v1/carts/items/10")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.result").value("SUCCESS"));
+        }
+    }
+
+    @Nested
+    @DisplayName("라인 제거 DELETE /api/v1/carts/items/{skuId}")
+    class RemoveItem {
+
+        @Test
+        @DisplayName("200 OK + 장바구니를 반환한다")
+        void should_returnCart_when_remove() throws Exception {
+            given(cartRemoveItemUseCase.removeItem(1L, 10L)).willReturn(sampleCart());
+
+            mockMvc.perform(delete("/api/v1/carts/items/10").param("memberId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.result").value("SUCCESS"));
+
+            then(cartRemoveItemUseCase).should().removeItem(1L, 10L);
+        }
+    }
+
+    @Nested
+    @DisplayName("비우기 DELETE /api/v1/carts")
+    class Clear {
+
+        @Test
+        @DisplayName("200 OK + SUCCESS를 반환하고 clear를 호출한다")
+        void should_clear_when_delete() throws Exception {
+            mockMvc.perform(delete("/api/v1/carts").param("memberId", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.result").value("SUCCESS"));
+
+            then(cartClearUseCase).should().clear(1L);
+        }
+    }
+}

@@ -26,7 +26,7 @@
 | name | String | not blank, 길이 제한 |
 | description | String | 상세설명 |
 | categoryId | Long | ID 참조, 존재검증 보류 |
-| brandId | Long | ID 참조, nullable |
+| brandId | Long | ID 참조, **필수**. 등록 시 존재 검증(브랜드 도메인 도입). 노출은 브랜드 ACTIVE 게이트를 함께 받음 — [`../brand/brand-domain-spec.md`](../brand/brand-domain-spec.md) |
 | imageUrl | String | 대표 이미지 1장 |
 | status | ProductStatus | `ON_SALE` / `SUSPENDED` / `DISCONTINUED` |
 
@@ -138,7 +138,7 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 ## 9. 보류·확장 지점 (의식적으로 미룸)
 
 - 재고 차감 동시성 락 → **주문 도메인**에서 결정(낙관적 `@Version` 유력).
-- Category/Brand 도메인 + ID 존재 검증.
+- ~~Brand 도메인 + ID 존재 검증~~ → 해소: [`../brand/brand-domain-spec.md`](../brand/brand-domain-spec.md)(brandId 필수화·존재검증·노출 게이트). Category 도메인 + 존재 검증은 여전히 보류.
 - 검색엔진(현재 DB LIKE).
 - 인증/인가(현재 권한 보류).
 - 상품 기본정보 수정·옵션 추가/삭제.

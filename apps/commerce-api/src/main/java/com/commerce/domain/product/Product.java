@@ -44,6 +44,9 @@ public class Product {
         if (categoryId == null) {
             throw new CoreException(ErrorType.BAD_REQUEST, "카테고리는 필수입니다.");
         }
+        if (brandId == null) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "브랜드는 필수입니다.");
+        }
         if (status == null) {
             throw new CoreException(ErrorType.BAD_REQUEST, "상품 상태는 필수입니다.");
         }

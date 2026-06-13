@@ -53,7 +53,7 @@ class ProductControllerV1Test {
 
     private ProductDetailInfo sampleDetail() {
         return new ProductDetailInfo(
-            1L, "맥북 프로", "M4 칩", 10L, 20L, "img.jpg", "ON_SALE",
+            1L, "맥북 프로", "M4 칩", 10L, 20L, "애플", "logo.jpg", "img.jpg", "ON_SALE",
             List.of(new ProductDetailInfo.SkuInfo(
                 100L,
                 List.of(new ProductDetailInfo.OptionValueInfo("색상", "스페이스블랙")),
@@ -68,7 +68,7 @@ class ProductControllerV1Test {
         @Test
         @DisplayName("200 OK + 페이지 요약 목록을 반환한다")
         void should_returnSummaryPage_when_search() throws Exception {
-            given(productSearchUseCase.search(any(), any(), anyInt(), anyInt()))
+            given(productSearchUseCase.search(any(), any(), any(), anyInt(), anyInt()))
                 .willReturn(new PageResult<>(
                     List.of(new ProductSummaryInfo(1L, "맥북 프로", "img.jpg", 2700000L)), 1, 0, 20));
 
@@ -96,6 +96,7 @@ class ProductControllerV1Test {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.result").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.brandName").value("애플"))
                 .andExpect(jsonPath("$.data.status").value("ON_SALE"))
                 .andExpect(jsonPath("$.data.skus[0].discounted").value(true));
         }
@@ -151,6 +152,7 @@ class ProductControllerV1Test {
                 {
                   "name": "",
                   "categoryId": 10,
+                  "brandId": 20,
                   "skus": [
                     { "optionValues": [{"name":"색상","value":"블랙"}], "originalPrice": 3000000, "stock": 10 }
                   ]

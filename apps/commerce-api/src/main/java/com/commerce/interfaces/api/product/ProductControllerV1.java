@@ -35,10 +35,11 @@ public class ProductControllerV1 {
     public ApiResponse<PageResponse<ProductSummaryResponse>> search(
         @RequestParam(required = false) String keyword,
         @RequestParam(required = false) Long categoryId,
+        @RequestParam(required = false) Long brandId,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
-        PageResult<ProductSummaryInfo> result = productSearchUseCase.search(keyword, categoryId, page, size);
+        PageResult<ProductSummaryInfo> result = productSearchUseCase.search(keyword, categoryId, brandId, page, size);
         return ApiResponse.success(PageResponse.of(result, ProductSummaryResponse::from));
     }
 

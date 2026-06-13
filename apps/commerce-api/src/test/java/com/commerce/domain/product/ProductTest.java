@@ -74,6 +74,15 @@ class ProductTest {
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
         }
+
+        @Test
+        @DisplayName("브랜드 ID가 null이면 BAD_REQUEST 예외가 발생한다")
+        void should_throwException_when_brandIdNull() {
+            // when & then
+            assertThatThrownBy(() -> Product.register(VALID_NAME, VALID_DESCRIPTION, VALID_CATEGORY_ID, null, VALID_IMAGE_URL))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+        }
     }
 
     @Nested

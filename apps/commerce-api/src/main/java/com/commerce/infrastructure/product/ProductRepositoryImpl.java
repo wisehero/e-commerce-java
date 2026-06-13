@@ -8,6 +8,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
+import com.commerce.domain.brand.BrandStatus;
 import com.commerce.domain.product.Product;
 import com.commerce.domain.product.ProductRepository;
 import com.commerce.domain.product.ProductSearchCondition;
@@ -56,7 +57,8 @@ public class ProductRepositoryImpl implements ProductRepository {
         Pageable pageable = PageRequest.of(condition.page(), condition.size());
 
         Page<ProductJpaEntity> page = jpa.search(
-            ProductStatus.ON_SALE, condition.keyword(), condition.categoryId(), pageable
+            ProductStatus.ON_SALE, BrandStatus.ACTIVE,
+            condition.keyword(), condition.categoryId(), condition.brandId(), pageable
         );
 
         List<Product> items = page.getContent().stream()

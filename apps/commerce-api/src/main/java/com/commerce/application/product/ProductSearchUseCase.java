@@ -24,8 +24,8 @@ public class ProductSearchUseCase {
     private final SkuRepository skuRepository;
 
     @Transactional(readOnly = true)
-    public PageResult<ProductSummaryInfo> search(String keyword, Long categoryId, int page, int size) {
-        ProductSearchCondition condition = new ProductSearchCondition(keyword, categoryId, page, size);
+    public PageResult<ProductSummaryInfo> search(String keyword, Long categoryId, Long brandId, int page, int size) {
+        ProductSearchCondition condition = new ProductSearchCondition(keyword, categoryId, brandId, page, size);
         PageResult<Product> productPage = productRepository.search(condition);
 
         List<Long> productIds = productPage.items().stream()

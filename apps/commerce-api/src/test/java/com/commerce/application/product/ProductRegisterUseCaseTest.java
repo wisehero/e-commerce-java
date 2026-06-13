@@ -9,6 +9,7 @@ import static org.mockito.BDDMockito.never;
 import static org.mockito.BDDMockito.then;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -21,6 +22,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.commerce.application.product.ProductRegisterCommand.OptionValueCommand;
 import com.commerce.application.product.ProductRegisterCommand.SkuRegisterCommand;
+import com.commerce.domain.brand.Brand;
+import com.commerce.domain.brand.BrandRepository;
+import com.commerce.domain.brand.BrandStatus;
 import com.commerce.domain.product.Product;
 import com.commerce.domain.product.ProductRepository;
 import com.commerce.domain.product.Sku;
@@ -36,6 +40,9 @@ class ProductRegisterUseCaseTest {
 
     @Mock
     private SkuRepository skuRepository;
+
+    @Mock
+    private BrandRepository brandRepository;
 
     @InjectMocks
     private ProductRegisterUseCase useCase;
@@ -57,6 +64,8 @@ class ProductRegisterUseCaseTest {
         void should_returnDetailInfo_when_register() {
             // given
             ProductRegisterCommand command = commandWithSkus(List.of(skuCommand(10000, 100)));
+            given(brandRepository.findById(2L))
+                .willReturn(Optional.of(Brand.reconstitute(2L, "나이키", "logo.jpg", BrandStatus.ACTIVE)));
             given(productRepository.save(any(Product.class))).willAnswer(inv -> {
                 Product p = inv.getArgument(0);
                 return Product.reconstitute(10L, p.getName(), p.getDescription(),
@@ -71,6 +80,7 @@ class ProductRegisterUseCaseTest {
             assertThat(info)
                 .satisfies(i -> assertThat(i.id()).isEqualTo(10L))
                 .satisfies(i -> assertThat(i.name()).isEqualTo("맨투맨"))
+                .satisfies(i -> assertThat(i.brandName()).isEqualTo("나이키"))
                 .satisfies(i -> assertThat(i.status()).isEqualTo("ON_SALE"))
                 .satisfies(i -> assertThat(i.skus()).hasSize(1));
         }
@@ -80,6 +90,8 @@ class ProductRegisterUseCaseTest {
         void should_propagateProductId_toSkus_when_register() {
             // given
             ProductRegisterCommand command = commandWithSkus(List.of(skuCommand(10000, 100), skuCommand(20000, 50)));
+            given(brandRepository.findById(2L))
+                .willReturn(Optional.of(Brand.reconstitute(2L, "나이키", "logo.jpg", BrandStatus.ACTIVE)));
             given(productRepository.save(any(Product.class))).willAnswer(inv -> {
                 Product p = inv.getArgument(0);
                 return Product.reconstitute(10L, p.getName(), p.getDescription(),
@@ -99,6 +111,21 @@ class ProductRegisterUseCaseTest {
         }
 
         @Test
+        @DisplayName("브랜드가 존재하지 않으면 BAD_REQUEST 예외가 발생하고 상품을 저장하지 않는다")
+        void should_throwBadRequest_when_brandMissing() {
+            // given
+            ProductRegisterCommand command = commandWithSkus(List.of(skuCommand(10000, 100)));
+            given(brandRepository.findById(2L)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> useCase.register(command))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+            then(productRepository).should(never()).save(any());
+            then(skuRepository).should(never()).saveAll(anyList());
+        }
+
+        @Test
         @DisplayName("옵션이 비어 있으면 BAD_REQUEST 예외가 발생하고 아무것도 저장하지 않는다")
         void should_throwBadRequest_when_skusEmpty() {
             // given
@@ -110,6 +137,7 @@ class ProductRegisterUseCaseTest {
                 .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
             then(productRepository).should(never()).save(any());
             then(skuRepository).should(never()).saveAll(anyList());
+            then(brandRepository).should(never()).findById(any());
         }
 
         @Test

@@ -2,6 +2,7 @@ package com.commerce.application.product;
 
 import java.util.List;
 
+import com.commerce.domain.brand.Brand;
 import com.commerce.domain.product.OptionValue;
 import com.commerce.domain.product.Product;
 import com.commerce.domain.product.Sku;
@@ -12,17 +13,21 @@ public record ProductDetailInfo(
     String description,
     Long categoryId,
     Long brandId,
+    String brandName,
+    String brandLogoUrl,
     String imageUrl,
     String status,
     List<SkuInfo> skus
 ) {
-    public static ProductDetailInfo from(Product product, List<Sku> skus) {
+    public static ProductDetailInfo from(Product product, Brand brand, List<Sku> skus) {
         return new ProductDetailInfo(
             product.getId(),
             product.getName(),
             product.getDescription(),
             product.getCategoryId(),
             product.getBrandId(),
+            brand.getName(),
+            brand.getLogoUrl(),
             product.getImageUrl(),
             product.getStatus().name(),
             skus.stream().map(SkuInfo::from).toList()

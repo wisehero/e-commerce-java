@@ -21,6 +21,7 @@ public record ProductRegisterRequest(
     @NotNull(message = "카테고리는 필수입니다.")
     Long categoryId,
 
+    @NotNull(message = "브랜드는 필수입니다.")
     Long brandId,
 
     String imageUrl,

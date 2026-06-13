@@ -16,7 +16,8 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "products", indexes = {
-    @Index(name = "idx_products_category_id", columnList = "category_id")
+    @Index(name = "idx_products_category_id", columnList = "category_id"),
+    @Index(name = "idx_products_brand_id", columnList = "brand_id")
 })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -31,7 +32,7 @@ public class ProductJpaEntity extends BaseJpaEntity {
     @Column(name = "category_id", nullable = false)
     private Long categoryId;
 
-    @Column(name = "brand_id")
+    @Column(name = "brand_id", nullable = false)
     private Long brandId;
 
     @Column(name = "image_url", length = 500)

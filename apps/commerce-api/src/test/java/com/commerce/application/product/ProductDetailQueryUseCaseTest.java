@@ -18,6 +18,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.commerce.domain.brand.Brand;
+import com.commerce.domain.brand.BrandRepository;
+import com.commerce.domain.brand.BrandStatus;
 import com.commerce.domain.product.OptionValue;
 import com.commerce.domain.product.Product;
 import com.commerce.domain.product.ProductRepository;
@@ -38,6 +41,9 @@ class ProductDetailQueryUseCaseTest {
     @Mock
     private SkuRepository skuRepository;
 
+    @Mock
+    private BrandRepository brandRepository;
+
     @InjectMocks
     private ProductDetailQueryUseCase useCase;
 
@@ -50,6 +56,10 @@ class ProductDetailQueryUseCaseTest {
             new Money(10000), new Money(10000), new Stock(100));
     }
 
+    private Brand brandWith(BrandStatus status) {
+        return Brand.reconstitute(2L, "나이키", "logo.jpg", status);
+    }
+
     @Nested
     @DisplayName("상품 상세 조회")
     class GetDetail {
@@ -59,6 +69,7 @@ class ProductDetailQueryUseCaseTest {
         void should_returnDetailInfo_when_visibleProduct() {
             // given
             given(productRepository.findById(1L)).willReturn(Optional.of(productWith(1L, ProductStatus.ON_SALE)));
+            given(brandRepository.findById(2L)).willReturn(Optional.of(brandWith(BrandStatus.ACTIVE)));
             given(skuRepository.findByProductId(1L)).willReturn(List.of(skuOf(100L, 1L)));
 
             // when
@@ -67,6 +78,7 @@ class ProductDetailQueryUseCaseTest {
             // then
             assertThat(info)
                 .satisfies(i -> assertThat(i.id()).isEqualTo(1L))
+                .satisfies(i -> assertThat(i.brandName()).isEqualTo("나이키"))
                 .satisfies(i -> assertThat(i.skus()).hasSize(1));
         }
 
@@ -75,6 +87,20 @@ class ProductDetailQueryUseCaseTest {
         void should_throwNotFound_when_productMissing() {
             // given
             given(productRepository.findById(1L)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> useCase.getDetail(1L))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.NOT_FOUND);
+            then(skuRepository).should(never()).findByProductId(anyLong());
+        }
+
+        @Test
+        @DisplayName("브랜드가 비활성이면 NOT_FOUND로 숨기고 옵션을 조회하지 않는다")
+        void should_throwNotFound_when_brandNotVisible() {
+            // given
+            given(productRepository.findById(1L)).willReturn(Optional.of(productWith(1L, ProductStatus.ON_SALE)));
+            given(brandRepository.findById(2L)).willReturn(Optional.of(brandWith(BrandStatus.INACTIVE)));
 
             // when & then
             assertThatThrownBy(() -> useCase.getDetail(1L))
@@ -94,6 +120,7 @@ class ProductDetailQueryUseCaseTest {
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.NOT_FOUND);
             then(skuRepository).should(never()).findByProductId(anyLong());
+            then(brandRepository).should(never()).findById(anyLong());
         }
     }
 }

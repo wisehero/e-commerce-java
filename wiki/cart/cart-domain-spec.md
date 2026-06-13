@@ -1,0 +1,209 @@
+# 장바구니(Cart) 도메인 스펙 v1
+
+작성: 2026-06-13 · 상태: 합의 완료(설계), 구현 전
+
+회원·상품·주문 다음으로 만드는 도메인. 본 문서는 grill 세션에서 결정한 설계 합의를 기록한다.
+이 도메인은 [`order` 스펙](../order/order-domain-spec.md)이 §0·§13에서 통째로 미뤄둔 **"장바구니→주문"** 의 카트 쪽 절반을 닫는다.
+주문 스펙이 §11에서 보류한 **"동일 SKU 중복 라인 — 병합할지 거부할지"** 도 여기서 닫는다(§5).
+
+## 0. 범위
+
+이번 이터레이션: **카트 담기·수량변경·라인제거·비우기 + live 조회(상태 플래그 포함)**.
+
+- 카트는 **DB에 영속**한다. (Redis-TTL 후보를 검토했으나 의식적으로 RDB를 택했다 — §1.)
+- **체크아웃(카트→주문)은 백엔드에서 결합하지 않는다.** 클라이언트가 기존 `POST /orders`를 재사용한다(§7).
+- 보류(의식적): 게스트(비회원) 카트, 인증 enforce, 버려진 카트 정리 배치, added_price 스냅샷("가격 변동" 알림), 동시성 `@Version`(§13).
+
+## 1. 영속화 & Aggregate 구조 — DB(JPA), Order 패턴 미러링
+
+**`Cart`가 Aggregate Root**, **`CartLine`은 고유 식별자를 가진 자식 엔티티**(Aggregate 내부). order §1과 동일한 구조다.
+
+### 왜 Redis가 아니라 DB인가
+
+카트는 휘발성·고변경·버려짐이 잦아 Redis Hash + TTL이 교과서적 적합지였다(미사용 `modules:redis`의 자연스러운 첫 사용처). 그럼에도 **RDB를 택했다.**
+
+- 트레이드오프 수용: DB는 자동 만료가 없어 **버려진 카트 row가 누적**된다 → 정리 배치가 별도로 필요(§13에 TODO).
+- 대신 얻는 것: member/product/order와 **동일한 Aggregate·Repository·트랜잭션 패턴**을 그대로 재사용. load-modify-save 일관성.
+
+### 영속화 — `@OneToMany` 없이 두 테이블에 걸치기
+
+프로젝트 규칙상 JPA 연관 어노테이션이 전면 금지(`ddd.md §5`)다. order가 택한 방식(고유 id 자식 엔티티 + 별도 테이블)을 그대로 따른다.
+
+- Cart Aggregate가 **`carts` + `cart_lines` 두 테이블에 걸친다.**
+- `CartLineJpaEntity`는 고유 `id` + `cart_id`(`Long`, **ID 참조** — 연관 어노테이션 없음)를 가진다.
+- `CartRepositoryImpl`이 `carts` 행과 `cart_lines` 행을 **명시적으로** 저장·조회·조립한다(cascade 자동 저장 없음). order §1과 동일.
+- **도메인엔 `CartRepository` 하나만** 둔다. `CartLineRepository`를 외부에 노출하지 않는다 — 라인은 Cart Aggregate를 통해서만 접근.
+
+### `Cart` (Root)
+
+| 필드 | 타입 | 비고 |
+|---|---|---|
+| id | Long | |
+| memberId | Long | 소유자, ID 참조. member당 1카트 |
+| lines | `List<CartLine>` | Aggregate 내부 자식 엔티티 |
+| (createdAt/updatedAt) | BaseJpaEntity | 영속 메타. `updatedAt`은 §13 정리 배치 기준값 |
+
+- 팩토리: `Cart.create(memberId)`(id=null, 빈 카트) / `Cart.reconstitute(...)`.
+- 메서드: `addItem(skuId, qty)`, `changeQuantity(skuId, qty)`, `removeItem(skuId)`, `clear()` — §5.
+- **총액을 저장하지 않는다** — 카트는 live라 총액은 조회 시 현재가로 파생(§6·§8). 주문이 `totalAmount`를 저장한 것과 의식적으로 대비.
+
+### `CartLine` (자식 엔티티)
+
+| 필드 | 타입 | invariant |
+|---|---|---|
+| id | Long | 고유 식별자 |
+| skuId | Long | **라인 식별 키**(§5). ID 참조 |
+| quantity | int | ≥ 1 |
+
+- **스냅샷 없음** — 상품명·옵션·가격·재고·판매상태를 박제하지 않는다(§2).
+- 팩토리: `CartLine.create(skuId, qty)`(id=null) / `reconstitute(...)`.
+
+## 2. 라인 = live 참조 (스냅샷 아님) — 주문과의 핵심 대비
+
+주문(OrderLine)은 **과거 사실의 박제**(상품명·옵션·`salePrice`를 주문 시점으로 동결)다. 장바구니는 그 반대다.
+
+- `cart_lines`는 `(id, cart_id, sku_id, quantity)`만 들고, **가격·상품명·옵션·재고·판매상태는 조회 시점에 Product/Sku에서 다시 읽는다.**
+- 그래서 카트는 **현재 구매 의도의 live 뷰**다. 담은 뒤 가격이 내려가면(할인) 현재가가, 품절되면 품절이, 단종되면 단종이 조회에 자연히 반영된다.
+- 결과: 카트 조회는 자족적이지 않다(다른 Aggregate를 끌어와 enrich해야 함). 이 조립은 application UseCase가 책임진다(§6).
+
+| | OrderLine | CartLine |
+|---|---|---|
+| 성격 | 과거 사실 박제 | 현재 의도 live 참조 |
+| 저장 | 상품명·옵션·단가 스냅샷 | skuId + quantity만 |
+| 가격 | 주문 시점 `salePrice` 동결 | 조회 시 현재 `salePrice` |
+
+## 3. 소유자 & 생명주기
+
+- **소유자 = `memberId`.** order가 인증을 보류하고 `memberId` + 존재검증으로 처리한 선례를 따른다. **게스트(비회원) 카트는 보류**(§13).
+- 첫 `addItem` 시 해당 `memberId`가 존재하는 회원인지 **검증**한다(없으면 `NOT_FOUND`). order의 "유령 구매자 차단"(order §8)과 같은 정신 — 유령 카트를 만들지 않는다.
+- **member당 카트 1개**, **첫 `addItem` 때 lazy 생성**. 카트가 없는 member의 조회는 404가 아니라 **빈 카트 뷰**(라인 0개, 총액 0)를 반환한다.
+
+## 4. 검증 시점 — 카트=조언적, 주문=권위적
+
+담기/조회/결제 각 시점에 Product·Sku 상태를 어디까지 보는지가 카트 도메인의 책임 경계를 가른다.
+
+| 시점 | 검증 | 막는가 |
+|---|---|---|
+| **담을 때**(add/changeQty) | SKU 존재 + 소속 Product `ON_SALE` 구매가능 + 재고 ≥ 수량 | **막는다**(통과해야 담김) |
+| **조회 때** | live 재평가 → 라인 `status` 플래그(§6) | **막지 않는다**(표시만) |
+| **결제 때** | — | 카트는 결제 안 함. 최종 검증·재고차감은 **주문 도메인**(order §4 Txn1) |
+
+- 담을 때 막는 이유: 유령/판매중지 SKU가 애초에 카트에 안 들어와 **카트가 깨끗**하다.
+- 담은 뒤 상태는 변할 수 있으므로(품절·할인·단종) 조회 때 다시 평가하되 **라인을 막지 않고 플래그만** 단다 — 사용자가 보고 결정.
+- **카트의 검증은 어디까지나 조언적**이다. 진짜 권위(재고 차감·오버셀 방지)는 주문 도메인이 가진다 → 두 도메인의 책임이 깔끔히 나뉜다.
+
+## 5. 변경(mutation) 계약
+
+`Cart` Aggregate가 메서드로 자기 invariant를 지킨다. **라인 식별 키는 `skuId`** 하나다(조회·수량변경·제거 전부 skuId).
+
+| 메서드 | 동작 | invariant |
+|---|---|---|
+| `addItem(skuId, qty)` | 같은 SKU가 이미 있으면 **수량 합산(병합)**, 없으면 새 라인 | `qty ≥ 1`. 합산 결과를 그때 재고와 검증, 초과면 거부 |
+| `changeQuantity(skuId, qty)` | 해당 라인 수량을 **절대값으로** 변경 | `qty ≥ 1`. `0`은 `BAD_REQUEST`(제거는 `removeItem`) |
+| `removeItem(skuId)` | 라인 제거 | 없는 skuId면 무시 또는 `NOT_FOUND`(구현 시 택1) |
+| `clear()` | 전체 비움(주문 완료 후 등) | — |
+
+- 카트당 **최대 distinct 라인 수 상한**(예: 50)을 둬 Aggregate 비대를 막는다. 초과 시 `BAD_REQUEST`.
+
+### 동일 SKU 병합의 근거 (order §11이 보류한 결정)
+
+같은 SKU를 또 담으면 **수량을 합산**한다(별도 라인·거부 아님).
+
+- 카트의 보편적 실제 동작.
+- SKU는 이미 **옵션 조합까지 확정된 단위**(색상·사이즈 포함)라, 같은 skuId면 같은 물건 → 라인을 쪼갤 이유가 없다.
+- 라인 식별이 `skuId` 하나로 단순해진다.
+
+## 6. 조회(read) 모델 — live enrich
+
+`CartViewUseCase`가 조립한다(readOnly).
+
+1. `CartRepository`로 Cart 로드.
+2. 라인들의 `skuId`로 `Sku`/`Product`를 **배치 조회**(`findAllByIds`)해 현재 정보를 모은다.
+3. 라인별로 enrich + 상태 판정해 `CartLineInfo`로 조립, `CartInfo`로 묶는다.
+
+- **N+1 회피 필수**: 라인별 단건 조회 금지, 반드시 배치(`findAllByIds`). 이 프로젝트는 performance-profiler 스킬을 둘 만큼 N+1에 민감하다.
+- 조립·다중 Aggregate 읽기는 **application이 오케스트레이션**한다. domain·infra는 다른 Aggregate를 끌어오지 않는다(`ddd.md §5`, order §9와 동일).
+
+### `CartLineInfo` (application 파생)
+
+| 필드 | 출처 |
+|---|---|
+| skuId, quantity | Cart(저장값) |
+| productName, optionSummary | Product/Sku live 조회 |
+| salePrice | Sku live 조회(현재가) |
+| lineSubtotal | `salePrice × quantity` 파생 |
+| status | `PURCHASABLE` / `OUT_OF_STOCK` / `UNAVAILABLE`(판매중지·단종) — Product.status + Sku.stock으로 파생 |
+
+- `CartInfo.cartTotal` = **`PURCHASABLE` 라인 소계 합**. 못 사는 라인은 표시만 하고 총액에서 제외(체크아웃 금액과 일치).
+- 가격은 항상 **현재가**를 보여주므로 "가격 변동" 별도 플래그가 불필요하다(그건 added_price 스냅샷이 필요해 §2 원칙과 충돌 — §13 보류).
+- **`status`는 application(`CartLineInfo`)이 파생**한다. Cart 도메인은 skuId+qty만 알고 순수하게 유지(다른 Aggregate 상태를 모름).
+
+## 7. 체크아웃(카트→주문) — 백엔드 무결합
+
+cart와 order를 **백엔드에서 결합하지 않는다.** 클라이언트가 오케스트레이션한다.
+
+```
+클라: GET /api/v1/carts          → enriched 카트 조회·선택
+클라: POST /api/v1/orders {lines} → 기존 주문 API 재사용(변경 없음)
+클라: DELETE 라인 / 카트 clear     → 주문 성공 후 호출
+```
+
+- **cart ↔ order 백엔드 결합 = 0.** 주문 도메인은 카트를 영원히 모른다. 추가 백엔드 코드가 거의 없다(이미 있는 조회·`clear`·라인제거로 충분).
+- `CartCheckoutUseCase`가 `OrderPlaceUseCase`를 호출하는 **UseCase→UseCase 결합**(이 코드베이스에 무선례)을 의식적으로 피한다.
+- 트레이드오프: "주문 성공 후 카트 비우기"가 **클라이언트 책임**이 된다(인증 없는 현 단계엔 허용, 인증 도입 시 단일 체크아웃 엔드포인트로 강화 가능 — §13).
+
+## 8. 금액 모델
+
+- 라인 소계·카트 총액은 `Money`(공유 VO, order §7이 추가하는 `plus`/`multiply`/`ZERO`)로 계산한다.
+- **총액을 저장하지 않는다** — 카트는 live라 조회 시 현재가로 매번 파생한다. 주문이 `total_amount`를 영속화한 것(과거 청구 사실)과 의식적으로 대비된다. `cart_lines`엔 가격 컬럼이 없다.
+
+## 9. 유스케이스 (application, `@Transactional`)
+
+| UseCase | 입력 | 출력 | 비고 |
+|---|---|---|---|
+| 카트 담기 | `CartAddItemCommand`(memberId, skuId, quantity) | `CartInfo` | member 존재검증 → lazy 생성 → 담기 검증(§4) → 병합(§5) |
+| 카트 수량 변경 | `CartChangeQuantityCommand`(memberId, skuId, quantity) | `CartInfo` | 절대값 변경 + 재고 검증 |
+| 카트 라인 제거 | (memberId, skuId) | `CartInfo` | |
+| 카트 비우기 | memberId | — | `clear()` |
+| 카트 조회 | memberId | `CartInfo` | readOnly, live enrich(§6), 배치 조회 |
+
+- 담기/수량변경/조회 의존: `CartRepository`(쓰기/읽기) + `SkuRepository`(존재·재고·가격) + `ProductRepository`(`ON_SALE` 판단·상품명) + (담기 시) `MemberRepository`(존재검증).
+- 담기·수량변경은 단건 SKU라 단건 조회로 충분. **조회만 배치(`findAllByIds`)** 가 필요.
+
+## 10. 5계층 매핑
+
+- **interfaces** (`com.commerce.interfaces.api.cart`): `CartControllerV1`(`/api/v1/carts`), `*Request`/`*Response`(`PageResponse` 불필요 — 카트는 단건).
+  - `GET /api/v1/carts` (memberId) → 조회
+  - `POST /api/v1/carts/items` (memberId, skuId, quantity) → 담기
+  - `PATCH /api/v1/carts/items/{skuId}` (memberId, quantity) → 수량변경
+  - `DELETE /api/v1/carts/items/{skuId}` (memberId) → 라인 제거
+  - `DELETE /api/v1/carts` (memberId) → 비움
+  - memberId는 바디/파라미터로 받고 **인증 enforce는 TODO**(order·product admin과 동일).
+- **application** (`com.commerce.application.cart`): 위 UseCase들, `CartAddItemCommand`/`CartChangeQuantityCommand`, `CartInfo`/`CartLineInfo`(+`status` enum).
+- **domain** (`com.commerce.domain.cart`): `Cart`/`CartLine`, `CartRepository`(인터페이스). 순수 자바, JPA 어노테이션 없음.
+- **infrastructure** (`com.commerce.infrastructure.cart`): `CartJpaEntity`/`CartLineJpaEntity`, `CartJpaRepository`/`CartLineJpaRepository`, `CartRepositoryImpl`(두 테이블 영속화·조립). JPA 연관 어노테이션 없이 ID 참조.
+
+## 11. 구현 시 주의
+
+- **`ErrorType` 신규 없음**: `NOT_FOUND`(member/sku/product 없음, 빈 카트 조회는 404 아님에 주의), `BAD_REQUEST`(재고 부족·`qty<1`·`changeQuantity(0)`·라인수 상한 초과·구매 불가 상태), `CONFLICT`(필요 시). product §7·order §12 가이드 따름.
+- `CartRepository`: `findByMemberId(Long) → Optional<Cart>`, `save(Cart)`(두 테이블), `deleteByMemberId`(또는 `clear`는 Cart 비워 save).
+- `SkuRepository`에 `findAllByIds`, `ProductRepository`에 `findAllByIds`(조회 배치용) 필요. 담기 검증엔 단건 `findById` 재사용.
+- **동시성 `@Version` 안 둠**: 카트는 단일 소유자(memberId)라 경합이 거의 없다. 같은 유저의 동시 쓰기(여러 탭)가 문제되면 그때 추가.
+- `Cart.create`(빈 카트)/`reconstitute` 분리. status 파생은 application에서(§6), 도메인에 넣지 않는다.
+
+## 12. 검증 기준
+
+- domain 단위테스트: `addItem` 병합(수량 합산), `changeQuantity` 절대값·`qty<1` 거부, `removeItem`, `clear`, 라인수 상한.
+- application 테스트: 담기 검증(미존재 SKU·비-`ON_SALE`·재고부족 거부), lazy 생성, 조회 enrich + `status` 판정(`PURCHASABLE`/`OUT_OF_STOCK`/`UNAVAILABLE`), `cartTotal` = 구매가능 라인만 합산.
+- N+1 검증: 라인 N개 조회 시 Sku/Product 쿼리가 라인 수에 비례하지 않음(배치).
+- `@WebMvcTest`: 5개 엔드포인트, 에러 응답(`$.meta.result/errorCode/message`), 빈 카트 200 응답.
+- ArchUnit `LayerDependencyTest`(cart도 동일 규칙) · Spotless 그린.
+
+## 13. 보류·확장 지점 (의식적으로 미룸)
+
+- **버려진 카트 정리 배치**: DB는 TTL이 없어 row가 누적된다. `@Scheduled`로 `updated_at` N일 경과 카트 삭제(DB의 TTL 대체) — **별도 배치 이터레이션**. TODO 명시.
+- 게스트(비회원) 카트: 익명 식별자(쿠키/세션) 기반. 현재는 memberId만.
+- 인증 enforce: 본인 카트만 접근. 현재 memberId 파라미터 + TODO.
+- added_price 스냅샷("담을 때보다 가격 변동" 알림): §2 live 원칙과 충돌하므로 보류.
+- 단일 체크아웃 엔드포인트(`CartCheckoutUseCase`): 인증 도입 후 백엔드 결합이 필요해지면 재검토(§7).
+- 동시성 `@Version`(§11), 부분 선택 체크아웃(라인 선택), 위시리스트/저장 목록 분리.

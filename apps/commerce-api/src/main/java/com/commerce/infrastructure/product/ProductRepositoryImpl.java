@@ -42,6 +42,16 @@ public class ProductRepositoryImpl implements ProductRepository {
     }
 
     @Override
+    public List<Product> findByIds(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();                       // IN () 쿼리 방지
+        }
+        return jpa.findAllById(ids).stream()
+            .map(ProductJpaEntity::toDomain)
+            .toList();
+    }
+
+    @Override
     public PageResult<Product> search(ProductSearchCondition condition) {
         Pageable pageable = PageRequest.of(condition.page(), condition.size());
 

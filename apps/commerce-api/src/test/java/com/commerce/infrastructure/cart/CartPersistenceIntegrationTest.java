@@ -3,9 +3,12 @@ package com.commerce.infrastructure.cart;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.commerce.domain.cart.Cart;
 import com.commerce.domain.cart.CartRepository;
@@ -26,6 +29,16 @@ class CartPersistenceIntegrationTest extends IntegrationTestSupport {
 
     @Autowired
     private CartLineJpaRepository cartLineJpaRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    private TransactionTemplate txTemplate;
+
+    @BeforeEach
+    void setUp() {
+        txTemplate = new TransactionTemplate(transactionManager);
+    }
 
     @AfterEach
     void tearDown() {
@@ -64,11 +77,13 @@ class CartPersistenceIntegrationTest extends IntegrationTestSupport {
         cartRepository.save(sampleCart(1L));
 
         // when — 재조회 후 변경(병합·제거·신규)하고 저장
-        Cart cart = cartRepository.findByMemberId(1L).orElseThrow();
-        cart.addItem(10L, 3);      // 2 + 3 = 5 (병합)
-        cart.removeItem(11L);      // 제거
-        cart.addItem(12L, 1);      // 신규
-        cartRepository.save(cart);
+        txTemplate.executeWithoutResult(s -> {
+            Cart cart = cartRepository.findByMemberId(1L).orElseThrow();
+            cart.addItem(10L, 3);      // 2 + 3 = 5 (병합)
+            cart.removeItem(11L);      // 제거
+            cart.addItem(12L, 1);      // 신규
+            cartRepository.save(cart);
+        });
 
         // then
         Cart reloaded = cartRepository.findByMemberId(1L).orElseThrow();
@@ -87,9 +102,11 @@ class CartPersistenceIntegrationTest extends IntegrationTestSupport {
         cartRepository.save(sampleCart(1L));
 
         // when
-        Cart cart = cartRepository.findByMemberId(1L).orElseThrow();
-        cart.clear();
-        cartRepository.save(cart);
+        txTemplate.executeWithoutResult(s -> {
+            Cart cart = cartRepository.findByMemberId(1L).orElseThrow();
+            cart.clear();
+            cartRepository.save(cart);
+        });
 
         // then
         Cart reloaded = cartRepository.findByMemberId(1L).orElseThrow();

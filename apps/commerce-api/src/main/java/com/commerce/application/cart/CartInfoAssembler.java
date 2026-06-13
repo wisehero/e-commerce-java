@@ -7,6 +7,8 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 
+import com.commerce.domain.brand.Brand;
+import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.cart.Cart;
 import com.commerce.domain.cart.CartLine;
 import com.commerce.domain.product.OptionValue;
@@ -28,6 +30,7 @@ public class CartInfoAssembler {
 
     private final SkuRepository skuRepository;
     private final ProductRepository productRepository;
+    private final BrandRepository brandRepository;
 
     public CartInfo assemble(Cart cart) {
         List<CartLine> lines = cart.getLines();
@@ -46,8 +49,15 @@ public class CartInfoAssembler {
         Map<Long, Product> productById = productRepository.findByIds(productIds).stream()
             .collect(Collectors.toMap(Product::getId, Function.identity()));
 
+        List<Long> brandIds = productById.values().stream()
+            .map(Product::getBrandId)
+            .distinct()
+            .toList();
+        Map<Long, Brand> brandById = brandRepository.findByIds(brandIds).stream()
+            .collect(Collectors.toMap(Brand::getId, Function.identity()));
+
         List<CartLineInfo> lineInfos = lines.stream()
-            .map(line -> toLineInfo(line, skuById, productById))
+            .map(line -> toLineInfo(line, skuById, productById, brandById))
             .toList();
 
         long cartTotal = lineInfos.stream()
@@ -58,7 +68,8 @@ public class CartInfoAssembler {
         return new CartInfo(cart.getMemberId(), lineInfos, cartTotal);
     }
 
-    private CartLineInfo toLineInfo(CartLine line, Map<Long, Sku> skuById, Map<Long, Product> productById) {
+    private CartLineInfo toLineInfo(CartLine line, Map<Long, Sku> skuById, Map<Long, Product> productById,
+        Map<Long, Brand> brandById) {
         Sku sku = skuById.get(line.getSkuId());
         if (sku == null) {
             // SKU가 사라진 엣지 케이스 — 표시만 하고 구매 불가로 둔다.
@@ -69,7 +80,8 @@ public class CartInfoAssembler {
         long salePrice = sku.getSalePrice().amount();
         long subtotal = salePrice * line.getQuantity();
         String productName = (product == null) ? null : product.getName();
-        CartLineStatus status = resolveStatus(product, sku, line.getQuantity());
+        Brand brand = (product == null) ? null : brandById.get(product.getBrandId());
+        CartLineStatus status = resolveStatus(product, brand, sku, line.getQuantity());
 
         return new CartLineInfo(
             line.getSkuId(),
@@ -82,9 +94,9 @@ public class CartInfoAssembler {
         );
     }
 
-    private CartLineStatus resolveStatus(Product product, Sku sku, int quantity) {
-        if (product == null || !product.isVisible()) {
-            return CartLineStatus.UNAVAILABLE;       // 판매중지·단종·미존재
+    private CartLineStatus resolveStatus(Product product, Brand brand, Sku sku, int quantity) {
+        if (product == null || !product.isVisible() || brand == null || !brand.isVisible()) {
+            return CartLineStatus.UNAVAILABLE;       // 판매중지·단종·브랜드 비활성·미존재
         }
         if (sku.getStock().quantity() < quantity) {
             return CartLineStatus.OUT_OF_STOCK;      // 재고 부족(0 포함)

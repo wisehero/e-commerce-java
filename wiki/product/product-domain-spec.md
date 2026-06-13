@@ -41,11 +41,11 @@
 
 | 상태 | 의미 | 노출(목록·검색·상세) | 구매 | 전이 |
 |---|---|---|---|---|
-| `ON_SALE` | 정상 판매중 | 노출 | 가능(해당 SKU 재고 > 0일 때) | → SUSPENDED, → DISCONTINUED |
+| `ON_SALE` | 정상 판매중 | 노출(브랜드 ACTIVE일 때) | 가능(브랜드 ACTIVE + 해당 SKU 재고 > 0일 때) | → SUSPENDED, → DISCONTINUED |
 | `SUSPENDED` | **일시** 판매중지(복귀 가능) | 제외 | 불가 | → ON_SALE(resume), → DISCONTINUED |
 | `DISCONTINUED` | **영구** 단종(soft delete) | 제외 | 불가 | 없음(**단말**) |
 
-- **노출 = `ON_SALE`만.** 구매자 대상 조회(목록·검색·상세) 어디서도 `SUSPENDED`·`DISCONTINUED`는 보이지 않는다. 상세 조회 시 비-`ON_SALE`이면 `NOT_FOUND`. → `Product.isVisible()` = `status == ON_SALE`.
+- **노출 = `ON_SALE` + 브랜드 `ACTIVE`.** 구매자 대상 조회(목록·검색·상세) 어디서도 `SUSPENDED`·`DISCONTINUED`나 비활성 브랜드 상품은 보이지 않는다. 상세 조회 시 비-`ON_SALE` 또는 비활성 브랜드면 `NOT_FOUND`. → `Product.isVisible()` = `status == ON_SALE`, 최종 고객 게이트는 브랜드 상태를 함께 본다.
 - `SUSPENDED` vs `DISCONTINUED`: 전자는 **복귀(resume) 가능**한 일시중지, 후자는 **되돌릴 수 없는** 영구 종료(삭제 대체).
 - 전이 규칙(`Product`가 소유, 위반 시 `CoreException`):
   - `register()` → `ON_SALE`
@@ -66,7 +66,7 @@
 
 - 팩토리: `create(...)`(id=null) / `reconstitute(...)`.
 - 메서드: `applyDiscount(Money)` `clearDiscount()` `changePrice(Money)` `restock(int)` `decreaseStock(int)`.
-- **SKU 개별 상태 없음** — 옵션 판매 가능성 = `Product.status` + 해당 SKU 재고로 판단.
+- **SKU 개별 상태 없음** — 옵션 판매 가능성 = `Product.status` + `Brand.status` + 해당 SKU 재고로 판단.
 
 ## 2. 가격 모델
 
@@ -89,7 +89,7 @@
 domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring Data `Pageable`/`Page`를 도메인에 노출하지 않는다.
 
 - `PageResult<T>(List<T> items, long totalCount, int page, int size)` — **제네릭**, 위치: `com.commerce.support.page` (어디서든 참조 가능). `totalPages()`/`hasNext()` 파생 메서드 보유.
-- `ProductSearchCondition(String keyword, Long categoryId, int page, int size)` — **상품 전용**, 위치: `com.commerce.domain.product`. 상품 전용 필드(keyword·categoryId)라 범용 support가 아닌 product 도메인에 둔다. domain `ProductRepository.search(...)`가 직접 참조하므로 domain에 있어야 한다. `keyword`·`categoryId`는 선택 필터(null 허용), `page`는 **0-base**.
+- `ProductSearchCondition(String keyword, Long categoryId, Long brandId, int page, int size)` — **상품 전용**, 위치: `com.commerce.domain.product`. 상품 전용 필드(keyword·categoryId·brandId)라 범용 support가 아닌 product 도메인에 둔다. domain `ProductRepository.search(...)`가 직접 참조하므로 domain에 있어야 한다. `keyword`·`categoryId`·`brandId`는 선택 필터(null 허용), `page`는 **0-base**.
   - **이름이 `*Criteria`가 아닌 이유**: `ddd.md §7`·ArchUnit 규칙상 `*Criteria`는 **application 계층 전용** 조회 경계 객체다. 이 객체는 domain Repository 인터페이스가 소유하는 query 객체(DDD Specification 성격)이므로 `*Criteria`로 명명하면 컨벤션과 충돌한다. 그래서 domain 적합 이름인 `Condition`을 쓴다. (초기엔 `ProductSearchCriteria`로 잘못 명명해 ArchUnit이 위반을 잡았고, 개명으로 해소.)
 - infrastructure에서 `Condition → Spring Data Pageable`, `Page → PageResult` 변환. **Spring Data 의존은 infra에 가둔다.**
 
@@ -99,12 +99,12 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 |---|---|---|---|
 | 상품 등록 | `ProductRegisterCommand` | `ProductDetailInfo` | Product+SKU **한 트랜잭션** |
 | 상품 상세 조회 | productId | `ProductDetailInfo` | readOnly, Product+SKU 조립 |
-| 상품 목록/검색 | `ProductSearchCriteria` | `PageResult<ProductSummaryInfo>` | readOnly, name LIKE + categoryId 필터 |
+| 상품 목록/검색 | `ProductSearchCriteria` | `PageResult<ProductSummaryInfo>` | readOnly, name LIKE + categoryId + brandId 필터 |
 | 상품 상태 변경 | productId | — | suspend / resume / discontinue |
 | SKU 가격 변경 | `SkuPriceChangeCommand` | — | applyDiscount / changePrice |
 | SKU 재고 조정 | `SkuStockAdjustCommand` | — | restock |
 
-- 목록·검색·상세에서 **`ON_SALE`만 노출** (`SUSPENDED`·`DISCONTINUED` 제외). 상세 조회 시 비-`ON_SALE`이면 `NOT_FOUND`. 자세한 규칙은 §1 "상태 의미와 노출 규칙" 참조.
+- 목록·검색·상세에서 **`ON_SALE` + 브랜드 `ACTIVE`만 노출** (`SUSPENDED`·`DISCONTINUED`·비활성 브랜드 제외). 상세 조회 시 비-`ON_SALE` 또는 비활성 브랜드면 `NOT_FOUND`. 자세한 규칙은 §1 "상태 의미와 노출 규칙" 참조.
 - 상세·조립 패턴: UseCase가 `ProductRepository` + `SkuRepository`를 각각 호출해 `Info`로 조립한다. 도메인·인프라가 다른 Aggregate를 끌어오지 않는다.
 
 ### 상품 등록을 한 트랜잭션으로 두는 근거 (규칙의 명시적 예외)

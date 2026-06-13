@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.commerce.domain.brand.Brand;
+import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.member.MemberRepository;
 import com.commerce.domain.order.Order;
 import com.commerce.domain.order.OrderLine;
@@ -35,6 +37,7 @@ import com.commerce.support.error.ErrorType;
 public class OrderPlaceUseCase {
 
     private final MemberRepository memberRepository;
+    private final BrandRepository brandRepository;
     private final ProductRepository productRepository;
     private final SkuRepository skuRepository;
     private final OrderRepository orderRepository;
@@ -42,11 +45,13 @@ public class OrderPlaceUseCase {
     private final PaymentGateway paymentGateway;
     private final TransactionTemplate transactionTemplate;
 
-    public OrderPlaceUseCase(MemberRepository memberRepository, ProductRepository productRepository,
+    public OrderPlaceUseCase(MemberRepository memberRepository, BrandRepository brandRepository,
+        ProductRepository productRepository,
         SkuRepository skuRepository, OrderRepository orderRepository,
         Map<String, StockDeducter> stockDeducters, PaymentGateway paymentGateway,
         PlatformTransactionManager transactionManager) {
         this.memberRepository = memberRepository;
+        this.brandRepository = brandRepository;
         this.productRepository = productRepository;
         this.skuRepository = skuRepository;
         this.orderRepository = orderRepository;
@@ -90,6 +95,11 @@ public class OrderPlaceUseCase {
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 상품입니다."));
             if (!product.isVisible()) {
                 throw new CoreException(ErrorType.BAD_REQUEST, "구매할 수 없는 상품입니다.");
+            }
+            Brand brand = brandRepository.findById(product.getBrandId())
+                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 브랜드입니다."));
+            if (!brand.isVisible()) {
+                throw new CoreException(ErrorType.BAD_REQUEST, "구매할 수 없는 브랜드입니다.");
             }
 
             lines.add(OrderLine.create(

@@ -1,5 +1,6 @@
 package com.commerce.infrastructure.brand;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.stereotype.Repository;
@@ -32,6 +33,16 @@ public class BrandRepositoryImpl implements BrandRepository {
     @Override
     public Optional<Brand> findById(Long id) {
         return jpa.findById(id).map(BrandJpaEntity::toDomain);
+    }
+
+    @Override
+    public List<Brand> findByIds(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return jpa.findAllById(ids).stream()
+            .map(BrandJpaEntity::toDomain)
+            .toList();
     }
 
     @Override

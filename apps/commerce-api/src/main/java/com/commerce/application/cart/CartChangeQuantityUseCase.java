@@ -3,6 +3,8 @@ package com.commerce.application.cart;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.commerce.domain.brand.Brand;
+import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.cart.Cart;
 import com.commerce.domain.cart.CartRepository;
 import com.commerce.domain.product.Product;
@@ -25,6 +27,7 @@ public class CartChangeQuantityUseCase {
     private final CartRepository cartRepository;
     private final SkuRepository skuRepository;
     private final ProductRepository productRepository;
+    private final BrandRepository brandRepository;
     private final CartInfoAssembler assembler;
 
     @Transactional
@@ -38,6 +41,11 @@ public class CartChangeQuantityUseCase {
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 상품입니다."));
         if (!product.isVisible()) {
             throw new CoreException(ErrorType.BAD_REQUEST, "판매 중인 상품이 아닙니다.");
+        }
+        Brand brand = brandRepository.findById(product.getBrandId())
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 브랜드입니다."));
+        if (!brand.isVisible()) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "구매할 수 없는 브랜드입니다.");
         }
         if (sku.getStock().quantity() < command.quantity()) {
             throw new CoreException(ErrorType.BAD_REQUEST, "재고가 부족합니다.");

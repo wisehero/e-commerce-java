@@ -15,6 +15,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.commerce.domain.brand.Brand;
+import com.commerce.domain.brand.BrandRepository;
+import com.commerce.domain.brand.BrandStatus;
 import com.commerce.domain.cart.Cart;
 import com.commerce.domain.product.OptionValue;
 import com.commerce.domain.product.Product;
@@ -34,12 +37,14 @@ class CartInfoAssemblerTest {
     private SkuRepository skuRepository;
     @Mock
     private ProductRepository productRepository;
+    @Mock
+    private BrandRepository brandRepository;
 
     private CartInfoAssembler assembler;
 
     @BeforeEach
     void setUp() {
-        assembler = new CartInfoAssembler(skuRepository, productRepository);
+        assembler = new CartInfoAssembler(skuRepository, productRepository, brandRepository);
     }
 
     private Sku sku(long skuId, long productId, long salePrice, int stock) {
@@ -49,6 +54,10 @@ class CartInfoAssemblerTest {
 
     private Product product(long productId, ProductStatus status) {
         return Product.reconstitute(productId, "맨투맨" + productId, "설명", 1L, 2L, "img.jpg", status);
+    }
+
+    private Brand brand(BrandStatus status) {
+        return Brand.reconstitute(2L, "나이키", "logo.jpg", status);
     }
 
     private Cart cartWith(long... skuIds) {
@@ -71,6 +80,7 @@ class CartInfoAssemblerTest {
             .satisfies(i -> assertThat(i.cartTotal()).isZero());
         then(skuRepository).should(never()).findByIds(anyList());
         then(productRepository).should(never()).findByIds(anyList());
+        then(brandRepository).should(never()).findByIds(anyList());
     }
 
     @Test
@@ -79,6 +89,7 @@ class CartInfoAssemblerTest {
         // given — salePrice 8000 × 2 = 16000, 재고 5
         given(skuRepository.findByIds(anyList())).willReturn(List.of(sku(10L, 100L, 8000, 5)));
         given(productRepository.findByIds(anyList())).willReturn(List.of(product(100L, ProductStatus.ON_SALE)));
+        given(brandRepository.findByIds(anyList())).willReturn(List.of(brand(BrandStatus.ACTIVE)));
 
         // when
         CartInfo info = assembler.assemble(cartWith(10L));
@@ -99,6 +110,7 @@ class CartInfoAssemblerTest {
         // given — 담은 수량 2, 재고 1
         given(skuRepository.findByIds(anyList())).willReturn(List.of(sku(10L, 100L, 8000, 1)));
         given(productRepository.findByIds(anyList())).willReturn(List.of(product(100L, ProductStatus.ON_SALE)));
+        given(brandRepository.findByIds(anyList())).willReturn(List.of(brand(BrandStatus.ACTIVE)));
 
         // when
         CartInfo info = assembler.assemble(cartWith(10L));
@@ -116,6 +128,25 @@ class CartInfoAssemblerTest {
         // given
         given(skuRepository.findByIds(anyList())).willReturn(List.of(sku(10L, 100L, 8000, 5)));
         given(productRepository.findByIds(anyList())).willReturn(List.of(product(100L, ProductStatus.SUSPENDED)));
+        given(brandRepository.findByIds(anyList())).willReturn(List.of(brand(BrandStatus.ACTIVE)));
+
+        // when
+        CartInfo info = assembler.assemble(cartWith(10L));
+
+        // then
+        assertThat(info.lines())
+            .singleElement()
+            .satisfies(line -> assertThat(line.status()).isEqualTo(CartLineStatus.UNAVAILABLE));
+        assertThat(info.cartTotal()).isZero();
+    }
+
+    @Test
+    @DisplayName("브랜드가 비활성이면 UNAVAILABLE이고 총액에서 제외된다")
+    void should_markUnavailable_when_brandInactive() {
+        // given
+        given(skuRepository.findByIds(anyList())).willReturn(List.of(sku(10L, 100L, 8000, 5)));
+        given(productRepository.findByIds(anyList())).willReturn(List.of(product(100L, ProductStatus.ON_SALE)));
+        given(brandRepository.findByIds(anyList())).willReturn(List.of(brand(BrandStatus.INACTIVE)));
 
         // when
         CartInfo info = assembler.assemble(cartWith(10L));
@@ -141,6 +172,7 @@ class CartInfoAssemblerTest {
             product(101L, ProductStatus.ON_SALE),
             product(102L, ProductStatus.SUSPENDED)
         ));
+        given(brandRepository.findByIds(anyList())).willReturn(List.of(brand(BrandStatus.ACTIVE)));
 
         // when
         CartInfo info = assembler.assemble(cartWith(10L, 11L, 12L));
@@ -159,6 +191,7 @@ class CartInfoAssemblerTest {
             sku(11L, 100L, 5000, 5)
         ));
         given(productRepository.findByIds(anyList())).willReturn(List.of(product(100L, ProductStatus.ON_SALE)));
+        given(brandRepository.findByIds(anyList())).willReturn(List.of(brand(BrandStatus.ACTIVE)));
 
         // when
         assembler.assemble(cartWith(10L, 11L));
@@ -166,5 +199,6 @@ class CartInfoAssemblerTest {
         // then
         then(skuRepository).should().findByIds(anyList());
         then(productRepository).should().findByIds(anyList());
+        then(brandRepository).should().findByIds(anyList());
     }
 }

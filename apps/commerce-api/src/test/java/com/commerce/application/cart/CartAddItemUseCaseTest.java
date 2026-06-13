@@ -18,6 +18,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.commerce.domain.brand.Brand;
+import com.commerce.domain.brand.BrandRepository;
+import com.commerce.domain.brand.BrandStatus;
 import com.commerce.domain.cart.Cart;
 import com.commerce.domain.cart.CartRepository;
 import com.commerce.domain.member.Member;
@@ -49,13 +52,16 @@ class CartAddItemUseCaseTest {
     @Mock
     private ProductRepository productRepository;
     @Mock
+    private BrandRepository brandRepository;
+    @Mock
     private CartInfoAssembler assembler;
 
     private CartAddItemUseCase useCase;
 
     @BeforeEach
     void setUp() {
-        useCase = new CartAddItemUseCase(cartRepository, memberRepository, skuRepository, productRepository, assembler);
+        useCase = new CartAddItemUseCase(cartRepository, memberRepository, skuRepository, productRepository,
+            brandRepository, assembler);
     }
 
     private CartAddItemCommand command(int quantity) {
@@ -71,10 +77,15 @@ class CartAddItemUseCaseTest {
         return Product.reconstitute(PRODUCT_ID, "맨투맨", "설명", 1L, 2L, "img.jpg", status);
     }
 
+    private Brand brand(BrandStatus status) {
+        return Brand.reconstitute(2L, "나이키", "logo.jpg", status);
+    }
+
     private void givenValidCatalog(int stock) {
         given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(mock(Member.class)));
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku(stock)));
         given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
+        given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.ACTIVE)));
     }
 
     @Test
@@ -87,6 +98,22 @@ class CartAddItemUseCaseTest {
         assertThatThrownBy(() -> useCase.addItem(command(1)))
             .isInstanceOf(CoreException.class)
             .extracting("errorType").isEqualTo(ErrorType.NOT_FOUND);
+        then(cartRepository).should(never()).save(any());
+    }
+
+    @Test
+    @DisplayName("브랜드가 비활성이면 BAD_REQUEST 예외가 발생하고 저장하지 않는다")
+    void should_throwBadRequest_when_brandInactive() {
+        // given
+        given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(mock(Member.class)));
+        given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku(100)));
+        given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
+        given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.INACTIVE)));
+
+        // when & then
+        assertThatThrownBy(() -> useCase.addItem(command(1)))
+            .isInstanceOf(CoreException.class)
+            .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
         then(cartRepository).should(never()).save(any());
     }
 

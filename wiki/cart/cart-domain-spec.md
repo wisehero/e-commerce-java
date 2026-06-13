@@ -84,12 +84,12 @@
 
 | 시점 | 검증 | 막는가 |
 |---|---|---|
-| **담을 때**(add/changeQty) | SKU 존재 + 소속 Product `ON_SALE` 구매가능 + 재고 ≥ 수량 | **막는다**(통과해야 담김) |
+| **담을 때**(add/changeQty) | SKU 존재 + 소속 Product `ON_SALE` + Brand `ACTIVE` 구매가능 + 재고 ≥ 수량 | **막는다**(통과해야 담김) |
 | **조회 때** | live 재평가 → 라인 `status` 플래그(§6) | **막지 않는다**(표시만) |
 | **결제 때** | — | 카트는 결제 안 함. 최종 검증·재고차감은 **주문 도메인**(order §4 Txn1) |
 
-- 담을 때 막는 이유: 유령/판매중지 SKU가 애초에 카트에 안 들어와 **카트가 깨끗**하다.
-- 담은 뒤 상태는 변할 수 있으므로(품절·할인·단종) 조회 때 다시 평가하되 **라인을 막지 않고 플래그만** 단다 — 사용자가 보고 결정.
+- 담을 때 막는 이유: 유령/판매중지/비활성 브랜드 SKU가 애초에 카트에 안 들어와 **카트가 깨끗**하다.
+- 담은 뒤 상태는 변할 수 있으므로(품절·할인·단종·브랜드 비활성화) 조회 때 다시 평가하되 **라인을 막지 않고 플래그만** 단다 — 사용자가 보고 결정.
 - **카트의 검증은 어디까지나 조언적**이다. 진짜 권위(재고 차감·오버셀 방지)는 주문 도메인이 가진다 → 두 도메인의 책임이 깔끔히 나뉜다.
 
 ## 5. 변경(mutation) 계약
@@ -118,7 +118,7 @@
 `CartViewUseCase`가 조립한다(readOnly).
 
 1. `CartRepository`로 Cart 로드.
-2. 라인들의 `skuId`로 `Sku`/`Product`를 **배치 조회**(`findAllByIds`)해 현재 정보를 모은다.
+2. 라인들의 `skuId`로 `Sku`/`Product`/`Brand`를 **배치 조회**(`findAllByIds`)해 현재 정보를 모은다.
 3. 라인별로 enrich + 상태 판정해 `CartLineInfo`로 조립, `CartInfo`로 묶는다.
 
 - **N+1 회피 필수**: 라인별 단건 조회 금지, 반드시 배치(`findAllByIds`). 이 프로젝트는 performance-profiler 스킬을 둘 만큼 N+1에 민감하다.
@@ -132,7 +132,7 @@
 | productName, optionSummary | Product/Sku live 조회 |
 | salePrice | Sku live 조회(현재가) |
 | lineSubtotal | `salePrice × quantity` 파생 |
-| status | `PURCHASABLE` / `OUT_OF_STOCK` / `UNAVAILABLE`(판매중지·단종) — Product.status + Sku.stock으로 파생 |
+| status | `PURCHASABLE` / `OUT_OF_STOCK` / `UNAVAILABLE`(판매중지·단종·브랜드 비활성) — Product.status + Brand.status + Sku.stock으로 파생 |
 
 - `CartInfo.cartTotal` = **`PURCHASABLE` 라인 소계 합**. 못 사는 라인은 표시만 하고 총액에서 제외(체크아웃 금액과 일치).
 - 가격은 항상 **현재가**를 보여주므로 "가격 변동" 별도 플래그가 불필요하다(그건 added_price 스냅샷이 필요해 §2 원칙과 충돌 — §13 보류).
@@ -167,7 +167,7 @@ cart와 order를 **백엔드에서 결합하지 않는다.** 클라이언트가 
 | 카트 비우기 | memberId | — | `clear()` |
 | 카트 조회 | memberId | `CartInfo` | readOnly, live enrich(§6), 배치 조회 |
 
-- 담기/수량변경/조회 의존: `CartRepository`(쓰기/읽기) + `SkuRepository`(존재·재고·가격) + `ProductRepository`(`ON_SALE` 판단·상품명) + (담기 시) `MemberRepository`(존재검증).
+- 담기/수량변경/조회 의존: `CartRepository`(쓰기/읽기) + `SkuRepository`(존재·재고·가격) + `ProductRepository`(`ON_SALE` 판단·상품명) + `BrandRepository`(`ACTIVE` 판단) + (담기 시) `MemberRepository`(존재검증).
 - 담기·수량변경은 단건 SKU라 단건 조회로 충분. **조회만 배치(`findAllByIds`)** 가 필요.
 
 ## 10. 5계층 매핑
@@ -187,7 +187,7 @@ cart와 order를 **백엔드에서 결합하지 않는다.** 클라이언트가 
 
 - **`ErrorType` 신규 없음**: `NOT_FOUND`(member/sku/product 없음, 빈 카트 조회는 404 아님에 주의), `BAD_REQUEST`(재고 부족·`qty<1`·`changeQuantity(0)`·라인수 상한 초과·구매 불가 상태), `CONFLICT`(필요 시). product §7·order §12 가이드 따름.
 - `CartRepository`: `findByMemberId(Long) → Optional<Cart>`, `save(Cart)`(두 테이블), `deleteByMemberId`(또는 `clear`는 Cart 비워 save).
-- `SkuRepository`에 `findAllByIds`, `ProductRepository`에 `findAllByIds`(조회 배치용) 필요. 담기 검증엔 단건 `findById` 재사용.
+- `SkuRepository`에 `findByIds`, `ProductRepository`에 `findByIds`, `BrandRepository`에 `findByIds`(조회 배치용) 필요. 담기 검증엔 단건 `findById` 재사용.
 - **동시성 `@Version` 안 둠**: 카트는 단일 소유자(memberId)라 경합이 거의 없다. 같은 유저의 동시 쓰기(여러 탭)가 문제되면 그때 추가.
 - `Cart.create`(빈 카트)/`reconstitute` 분리. status 파생은 application에서(§6), 도메인에 넣지 않는다.
 

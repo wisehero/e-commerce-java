@@ -24,6 +24,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
+import com.commerce.domain.brand.Brand;
+import com.commerce.domain.brand.BrandRepository;
+import com.commerce.domain.brand.BrandStatus;
 import com.commerce.domain.member.Member;
 import com.commerce.domain.member.MemberRepository;
 import com.commerce.domain.order.Order;
@@ -55,6 +58,8 @@ class OrderPlaceUseCaseTest {
     @Mock
     private MemberRepository memberRepository;
     @Mock
+    private BrandRepository brandRepository;
+    @Mock
     private ProductRepository productRepository;
     @Mock
     private SkuRepository skuRepository;
@@ -72,7 +77,7 @@ class OrderPlaceUseCaseTest {
     @BeforeEach
     void setUp() {
         lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
-        useCase = new OrderPlaceUseCase(memberRepository, productRepository, skuRepository, orderRepository,
+        useCase = new OrderPlaceUseCase(memberRepository, brandRepository, productRepository, skuRepository, orderRepository,
             Map.of("optimistic", stockDeducter), paymentGateway, transactionManager);
     }
 
@@ -89,6 +94,10 @@ class OrderPlaceUseCaseTest {
         return Product.reconstitute(PRODUCT_ID, "맨투맨", "설명", 1L, 2L, "img.jpg", status);
     }
 
+    private Brand brand(BrandStatus status) {
+        return Brand.reconstitute(2L, "나이키", "logo.jpg", status);
+    }
+
     private Order pendingOrder() {
         OrderLine line = OrderLine.reconstitute(1L, PRODUCT_ID, SKU_ID, "맨투맨", "색상:빨강", new Money(8000), 2);
         return Order.reconstitute(ORDER_ID, MEMBER_ID, OrderStatus.PAYMENT_PENDING, List.of(line), new Money(16000));
@@ -98,6 +107,7 @@ class OrderPlaceUseCaseTest {
         given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(mock(Member.class)));
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku()));
         given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
+        given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.ACTIVE)));
         given(orderRepository.save(any(Order.class))).willAnswer(inv -> {
             Order o = inv.getArgument(0);
             return Order.reconstitute(ORDER_ID, o.getMemberId(), o.getStatus(), o.getOrderLines(), o.getTotalAmount());
@@ -183,6 +193,22 @@ class OrderPlaceUseCaseTest {
             given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(mock(Member.class)));
             given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku()));
             given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.SUSPENDED)));
+
+            // when & then
+            assertThatThrownBy(() -> useCase.place(command("optimistic")))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+            then(orderRepository).should(never()).save(any());
+        }
+
+        @Test
+        @DisplayName("브랜드가 비활성이면 BAD_REQUEST 예외가 발생한다")
+        void should_throwBadRequest_when_brandInactive() {
+            // given
+            given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(mock(Member.class)));
+            given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku()));
+            given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
+            given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.INACTIVE)));
 
             // when & then
             assertThatThrownBy(() -> useCase.place(command("optimistic")))

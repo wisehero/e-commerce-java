@@ -17,6 +17,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.commerce.domain.brand.Brand;
+import com.commerce.domain.brand.BrandRepository;
+import com.commerce.domain.brand.BrandStatus;
 import com.commerce.domain.cart.Cart;
 import com.commerce.domain.cart.CartRepository;
 import com.commerce.domain.product.OptionValue;
@@ -44,13 +47,16 @@ class CartChangeQuantityUseCaseTest {
     @Mock
     private ProductRepository productRepository;
     @Mock
+    private BrandRepository brandRepository;
+    @Mock
     private CartInfoAssembler assembler;
 
     private CartChangeQuantityUseCase useCase;
 
     @BeforeEach
     void setUp() {
-        useCase = new CartChangeQuantityUseCase(cartRepository, skuRepository, productRepository, assembler);
+        useCase = new CartChangeQuantityUseCase(cartRepository, skuRepository, productRepository,
+            brandRepository, assembler);
     }
 
     private CartChangeQuantityCommand command(int quantity) {
@@ -64,6 +70,10 @@ class CartChangeQuantityUseCaseTest {
 
     private Product product(ProductStatus status) {
         return Product.reconstitute(PRODUCT_ID, "맨투맨", "설명", 1L, 2L, "img.jpg", status);
+    }
+
+    private Brand brand(BrandStatus status) {
+        return Brand.reconstitute(2L, "나이키", "logo.jpg", status);
     }
 
     private Cart cartWithLine(int quantity) {
@@ -91,6 +101,7 @@ class CartChangeQuantityUseCaseTest {
         given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(cartWithLine(1)));
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku(2)));
         given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
+        given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.ACTIVE)));
 
         // when & then — 5 > 2
         assertThatThrownBy(() -> useCase.changeQuantity(command(5)))
@@ -106,11 +117,28 @@ class CartChangeQuantityUseCaseTest {
         given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(Cart.create(MEMBER_ID)));
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku(100)));
         given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
+        given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.ACTIVE)));
 
         // when & then
         assertThatThrownBy(() -> useCase.changeQuantity(command(2)))
             .isInstanceOf(CoreException.class)
             .extracting("errorType").isEqualTo(ErrorType.NOT_FOUND);
+        then(cartRepository).should(never()).save(any());
+    }
+
+    @Test
+    @DisplayName("브랜드가 비활성이면 BAD_REQUEST 예외가 발생하고 저장하지 않는다")
+    void should_throwBadRequest_when_brandInactive() {
+        // given
+        given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(cartWithLine(1)));
+        given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku(100)));
+        given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
+        given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.INACTIVE)));
+
+        // when & then
+        assertThatThrownBy(() -> useCase.changeQuantity(command(2)))
+            .isInstanceOf(CoreException.class)
+            .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
         then(cartRepository).should(never()).save(any());
     }
 
@@ -121,6 +149,7 @@ class CartChangeQuantityUseCaseTest {
         given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(cartWithLine(1)));
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku(100)));
         given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
+        given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.ACTIVE)));
         given(cartRepository.save(any(Cart.class))).willAnswer(inv -> inv.getArgument(0));
         CartInfo expected = new CartInfo(MEMBER_ID, List.of(), 0L);
         given(assembler.assemble(any(Cart.class))).willReturn(expected);
@@ -132,4 +161,5 @@ class CartChangeQuantityUseCaseTest {
         assertThat(result).isSameAs(expected);
         then(cartRepository).should().save(any(Cart.class));
     }
+
 }

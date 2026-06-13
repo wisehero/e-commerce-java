@@ -120,7 +120,7 @@ class OrderPlaceUseCaseTest {
             OrderInfo info = useCase.place(command("optimistic"));
 
             // then
-            assertThat(info.status()).isEqualTo(OrderStatus.PAID);
+            assertThat(info.status()).isEqualTo("PAID");
             assertThat(info.totalAmount()).isEqualTo(16000L);
             then(stockDeducter).should().deduct(SKU_ID, 2);
             then(paymentGateway).should().pay(eq(ORDER_ID), any());
@@ -144,7 +144,7 @@ class OrderPlaceUseCaseTest {
             OrderInfo info = useCase.place(command("optimistic"));
 
             // then
-            assertThat(info.status()).isEqualTo(OrderStatus.CANCELLED);
+            assertThat(info.status()).isEqualTo("CANCELLED");
             then(skuRepository).should().save(any(Sku.class));         // 재고 복원
             then(paymentGateway).should(never()).refund(any(), any()); // 결제 실패라 환불 없음
         }

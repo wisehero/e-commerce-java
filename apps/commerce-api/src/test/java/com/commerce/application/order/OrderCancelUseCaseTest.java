@@ -94,7 +94,7 @@ class OrderCancelUseCaseTest {
             OrderInfo info = useCase.cancel(ORDER_ID);
 
             // then
-            assertThat(info.status()).isEqualTo(OrderStatus.CANCELLED);
+            assertThat(info.status()).isEqualTo("CANCELLED");
             then(skuRepository).should().save(any(Sku.class));
             then(paymentGateway).should().refund(eq(ORDER_ID), any());
         }
@@ -110,7 +110,7 @@ class OrderCancelUseCaseTest {
             OrderInfo info = useCase.cancel(ORDER_ID);
 
             // then
-            assertThat(info.status()).isEqualTo(OrderStatus.CANCELLED);
+            assertThat(info.status()).isEqualTo("CANCELLED");
             then(skuRepository).should().save(any(Sku.class));
             then(paymentGateway).should(never()).refund(any(), any());
         }

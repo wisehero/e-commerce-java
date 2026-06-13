@@ -46,6 +46,16 @@ public class SkuRepositoryImpl implements SkuRepository {
     }
 
     @Override
+    public List<Sku> findByIds(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();                       // IN () 쿼리 방지
+        }
+        return jpa.findAllById(ids).stream()
+            .map(SkuJpaEntity::toDomain)
+            .toList();
+    }
+
+    @Override
     public List<Sku> findByProductId(Long productId) {
         return jpa.findByProductId(productId).stream()
             .map(SkuJpaEntity::toDomain)

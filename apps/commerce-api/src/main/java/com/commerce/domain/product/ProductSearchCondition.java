@@ -4,7 +4,7 @@ import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
 
 public record ProductSearchCondition(
-    String keyword, Long categoryId, int page, int size
+    String keyword, Long categoryId, Long brandId, int page, int size
 ) {
 
     private static final int MAX_SIZE = 100;

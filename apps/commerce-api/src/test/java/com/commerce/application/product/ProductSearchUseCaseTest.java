@@ -55,7 +55,7 @@ class ProductSearchUseCaseTest {
         @DisplayName("상품별로 최저 판매가를 계산해 요약 목록을 반환한다")
         void should_returnSummariesWithLowestPrice_when_search() {
             // given
-            ProductSearchCondition condition = new ProductSearchCondition(null, null, 0, 20);
+            ProductSearchCondition condition = new ProductSearchCondition(null, null, null, 0, 20);
             given(productRepository.search(condition))
                 .willReturn(new PageResult<>(List.of(productWith(1L), productWith(2L)), 2, 0, 20));
             given(skuRepository.findByProductIds(List.of(1L, 2L))).willReturn(List.of(
@@ -65,7 +65,7 @@ class ProductSearchUseCaseTest {
             ));
 
             // when
-            PageResult<ProductSummaryInfo> result = useCase.search(null, null, 0, 20);
+            PageResult<ProductSummaryInfo> result = useCase.search(null, null, null, 0, 20);
 
             // then
             assertThat(result.items())
@@ -77,17 +77,33 @@ class ProductSearchUseCaseTest {
         @DisplayName("상품이 없으면 빈 결과를 반환한다")
         void should_returnEmptyResult_when_noProducts() {
             // given
-            ProductSearchCondition condition = new ProductSearchCondition(null, null, 0, 20);
+            ProductSearchCondition condition = new ProductSearchCondition(null, null, null, 0, 20);
             given(productRepository.search(condition))
                 .willReturn(new PageResult<>(List.of(), 0, 0, 20));
             given(skuRepository.findByProductIds(anyList())).willReturn(List.of());
 
             // when
-            PageResult<ProductSummaryInfo> result = useCase.search(null, null, 0, 20);
+            PageResult<ProductSummaryInfo> result = useCase.search(null, null, null, 0, 20);
 
             // then
             assertThat(result.items()).isEmpty();
             assertThat(result.totalCount()).isZero();
+        }
+
+        @Test
+        @DisplayName("브랜드 필터를 ProductSearchCondition으로 전달한다")
+        void should_passBrandIdFilter_when_search() {
+            // given
+            ProductSearchCondition condition = new ProductSearchCondition("맨투맨", 1L, 2L, 0, 20);
+            given(productRepository.search(condition))
+                .willReturn(new PageResult<>(List.of(), 0, 0, 20));
+            given(skuRepository.findByProductIds(anyList())).willReturn(List.of());
+
+            // when
+            useCase.search("맨투맨", 1L, 2L, 0, 20);
+
+            // then
+            assertThat(condition.brandId()).isEqualTo(2L);
         }
     }
 }

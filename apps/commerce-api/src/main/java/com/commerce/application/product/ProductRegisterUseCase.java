@@ -5,6 +5,8 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.commerce.domain.brand.Brand;
+import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.product.OptionValue;
 import com.commerce.domain.product.Product;
 import com.commerce.domain.product.ProductRepository;
@@ -23,12 +25,15 @@ public class ProductRegisterUseCase {
 
     private final ProductRepository productRepository;
     private final SkuRepository skuRepository;
+    private final BrandRepository brandRepository;
 
     @Transactional
     public ProductDetailInfo register(ProductRegisterCommand command) {
         if (command.skus() == null || command.skus().isEmpty()) {
             throw new CoreException(ErrorType.BAD_REQUEST, "상품은 최소 1개의 옵션(SKU)을 가져야 합니다.");
         }
+        Brand brand = brandRepository.findById(command.brandId())
+            .orElseThrow(() -> new CoreException(ErrorType.BAD_REQUEST, "존재하지 않는 브랜드입니다."));
 
         Product product = Product.register(
             command.name(), command.description(), command.categoryId(),
@@ -48,6 +53,6 @@ public class ProductRegisterUseCase {
             .toList();
         List<Sku> savedSkus = skuRepository.saveAll(skus);
 
-        return ProductDetailInfo.from(savedProduct, savedSkus);
+        return ProductDetailInfo.from(savedProduct, brand, savedSkus);
     }
 }

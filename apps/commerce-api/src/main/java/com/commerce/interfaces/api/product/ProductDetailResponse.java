@@ -12,6 +12,8 @@ public record ProductDetailResponse(
     String description,
     Long categoryId,
     Long brandId,
+    String brandName,
+    String brandLogoUrl,
     String imageUrl,
     String status,
     List<SkuResponse> skus
@@ -20,7 +22,7 @@ public record ProductDetailResponse(
     public static ProductDetailResponse from(ProductDetailInfo info) {
         return new ProductDetailResponse(
             info.id(), info.name(), info.description(), info.categoryId(),
-            info.brandId(), info.imageUrl(), info.status(),
+            info.brandId(), info.brandName(), info.brandLogoUrl(), info.imageUrl(), info.status(),
             info.skus().stream().map(SkuResponse::from).toList()
         );
     }

@@ -23,7 +23,7 @@ datasource:
   mysql-jpa:
     main:
       driver-class-name: com.mysql.cj.jdbc.Driver
-      jdbc-url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}
+      jdbc-url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DATABASE}
       username: ${MYSQL_USER}
       password: "${MYSQL_PWD}"
       pool-name: mysql-main-pool
@@ -44,8 +44,8 @@ spring.config.activate.on-profile: local
 spring:
   jpa:
     show-sql: true
-    hibernate:
-      ddl-auto: create
+    # ddl-auto 미지정 = 상위 블록의 none 상속. 부팅 때마다 스키마/데이터를 보존한다.
+    # (수동 적재한 시드 데이터가 날아가지 않도록 create/create-drop 금지. create는 test 전용)
 
 datasource:
   mysql-jpa:

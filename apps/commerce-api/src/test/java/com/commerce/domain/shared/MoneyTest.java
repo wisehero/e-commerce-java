@@ -59,4 +59,47 @@ class MoneyTest {
             assertThat(new Money(1000).isGreaterThan(new Money(1001))).isFalse();
         }
     }
+
+    @Nested
+    @DisplayName("plus")
+    class Plus {
+
+        @Test
+        @DisplayName("두 금액을 더한다")
+        void should_returnSum_when_plus() {
+            // when & then
+            assertThat(new Money(1000).plus(new Money(500))).isEqualTo(new Money(1500));
+        }
+
+        @Test
+        @DisplayName("ZERO에 더하면 그대로다")
+        void should_returnSame_when_plusZero() {
+            // when & then
+            assertThat(Money.ZERO.plus(new Money(1000))).isEqualTo(new Money(1000));
+        }
+    }
+
+    @Nested
+    @DisplayName("multiply")
+    class Multiply {
+
+        @Test
+        @DisplayName("단가에 수량을 곱한다")
+        void should_returnProduct_when_multiply() {
+            // when & then
+            assertThat(new Money(1500).multiply(3)).isEqualTo(new Money(4500));
+        }
+    }
+
+    @Nested
+    @DisplayName("ZERO")
+    class Zero {
+
+        @Test
+        @DisplayName("ZERO의 금액은 0이다")
+        void should_beZeroAmount_when_ZERO() {
+            // when & then
+            assertThat(Money.ZERO.amount()).isZero();
+        }
+    }
 }

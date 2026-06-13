@@ -15,6 +15,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 
 @Entity
@@ -39,6 +40,11 @@ public class SkuJpaEntity extends BaseJpaEntity {
 
     @Column(name = "stock", nullable = false)
     private int stock;
+
+    /** 낙관적 락(OptimisticStockDeducter)용. Hibernate가 관리한다. */
+    @Version
+    @Column(name = "version")
+    private Long version;
 
     protected SkuJpaEntity() {
     }

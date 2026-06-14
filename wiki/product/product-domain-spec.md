@@ -1,6 +1,6 @@
 # 상품(Product) 도메인 스펙 v1
 
-작성: 2026-05-31 · 상태: 합의 완료(설계), 구현 전
+작성: 2026-05-31 · 상태: 구현 완료(이번 이터레이션 범위)
 
 회원 다음으로 만드는 첫 비-회원 Aggregate. 본 문서는 grill 세션에서 결정한 설계 합의를 기록한다.
 주문 도메인을 만들 때 이 결정들(특히 ID 참조·트랜잭션 경계)을 전제로 한다.
@@ -32,7 +32,7 @@
 
 - 팩토리: `register(...)`(id=null, status=ON_SALE 기본) / `reconstitute(...)`.
 - 메서드: `suspend()` `resume()` `discontinue()`.
-- **`DISCONTINUED`는 단말 상태**(되돌리기 불가). soft delete 역할을 겸하여, 단종 시 레코드는 남아 과거 주문 참조가 유지되고 목록·노출에서만 빠진다.
+- **`DISCONTINUED`는 단말 상태**(되돌리기 불가). 논리 삭제 역할을 겸하여, 단종 시 레코드는 남아 과거 주문 참조가 유지되고 목록·노출에서만 빠진다.
 - **품절은 상태가 아니다** → SKU 재고에서 파생(`stock == 0`). 상품 전체 품절 = 모든 SKU 재고 0(application이 계산).
 
 ### 상태(ProductStatus) 의미와 노출 규칙
@@ -43,7 +43,7 @@
 |---|---|---|---|---|
 | `ON_SALE` | 정상 판매중 | 노출(브랜드 ACTIVE일 때) | 가능(브랜드 ACTIVE + 해당 SKU 재고 > 0일 때) | → SUSPENDED, → DISCONTINUED |
 | `SUSPENDED` | **일시** 판매중지(복귀 가능) | 제외 | 불가 | → ON_SALE(resume), → DISCONTINUED |
-| `DISCONTINUED` | **영구** 단종(soft delete) | 제외 | 불가 | 없음(**단말**) |
+| `DISCONTINUED` | **영구** 단종(논리 삭제) | 제외 | 불가 | 없음(**단말**) |
 
 - **노출 = `ON_SALE` + 브랜드 `ACTIVE`.** 구매자 대상 조회(목록·검색·상세) 어디서도 `SUSPENDED`·`DISCONTINUED`나 비활성 브랜드 상품은 보이지 않는다. 상세 조회 시 비-`ON_SALE` 또는 비활성 브랜드면 `NOT_FOUND`. → `Product.isVisible()` = `status == ON_SALE`, 최종 고객 게이트는 브랜드 상태를 함께 본다.
 - `SUSPENDED` vs `DISCONTINUED`: 전자는 **복귀(resume) 가능**한 일시중지, 후자는 **되돌릴 수 없는** 영구 종료(삭제 대체).
@@ -133,7 +133,7 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 ## 8. 권한
 
 - 현재 인증 인프라 없음(`spring-security-crypto`로 BCrypt만 사용, Spring Security·SecurityConfig·로그인 없음).
-- 상품 등록/수정/단종은 본질적으로 ADMIN 행위지만 **enforce 보류** — 의도는 TODO로 표시, 실제 권한 검증은 인증 도메인을 만들 때 일괄 적용.
+- 상품 등록/수정/단종은 본질적으로 ADMIN 행위지만 **강제 적용 보류** — 의도는 TODO로 표시, 실제 권한 검증은 인증 도메인을 만들 때 일괄 적용.
 
 ## 9. 보류·확장 지점 (의식적으로 미룸)
 

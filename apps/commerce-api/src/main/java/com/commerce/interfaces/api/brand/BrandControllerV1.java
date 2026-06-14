@@ -1,5 +1,7 @@
 package com.commerce.interfaces.api.brand;
 
+import io.swagger.v3.oas.annotations.Operation;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,18 +30,21 @@ public class BrandControllerV1 {
     private final BrandUpdateUseCase brandUpdateUseCase;
     private final BrandStatusChangeUseCase brandStatusChangeUseCase;
 
+    @Operation(summary = "브랜드 상세 조회")
     @GetMapping("/{brandId}")
     public ApiResponse<BrandResponse> getBrand(@PathVariable Long brandId) {
         BrandInfo info = brandQueryUseCase.getBrand(brandId);
         return ApiResponse.success(BrandResponse.from(info));
     }
 
+    @Operation(summary = "브랜드 등록")
     @PostMapping
     public ApiResponse<BrandResponse> register(@Valid @RequestBody BrandRegisterRequest request) {
         BrandInfo info = brandRegisterUseCase.register(request.toCommand());
         return ApiResponse.success(BrandResponse.from(info));
     }
 
+    @Operation(summary = "브랜드 정보 수정")
     @PatchMapping("/{brandId}")
     public ApiResponse<BrandResponse> update(
         @PathVariable Long brandId,
@@ -49,12 +54,14 @@ public class BrandControllerV1 {
         return ApiResponse.success(BrandResponse.from(info));
     }
 
+    @Operation(summary = "브랜드 활성화")
     @PostMapping("/{brandId}/activate")
     public ApiResponse<Object> activate(@PathVariable Long brandId) {
         brandStatusChangeUseCase.activate(brandId);
         return ApiResponse.success();
     }
 
+    @Operation(summary = "브랜드 비활성화")
     @PostMapping("/{brandId}/deactivate")
     public ApiResponse<Object> deactivate(@PathVariable Long brandId) {
         brandStatusChangeUseCase.deactivate(brandId);

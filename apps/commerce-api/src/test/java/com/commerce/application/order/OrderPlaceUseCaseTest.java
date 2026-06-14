@@ -80,12 +80,15 @@ class OrderPlaceUseCaseTest {
     private PlatformTransactionManager transactionManager;
 
     private OrderPlaceUseCase useCase;
+    private OrderCompensationHelper orderCompensationHelper;
 
     @BeforeEach
     void setUp() {
         lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+        orderCompensationHelper = new OrderCompensationHelper(skuRepository, issuedCouponRepository);
         useCase = new OrderPlaceUseCase(memberRepository, brandRepository, productRepository, skuRepository, orderRepository,
-            issuedCouponRepository, Map.of("optimistic", stockDeducter), paymentGateway, transactionManager);
+            issuedCouponRepository, orderCompensationHelper, Map.of("optimistic", stockDeducter), paymentGateway,
+            transactionManager);
     }
 
     private OrderPlaceCommand command(String lockMode) {

@@ -1,5 +1,7 @@
 package com.commerce.interfaces.api.order;
 
+import io.swagger.v3.oas.annotations.Operation;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,24 +30,28 @@ public class OrderControllerV1 {
     private final OrderCancelUseCase orderCancelUseCase;
     private final OrderQueryUseCase orderQueryUseCase;
 
+    @Operation(summary = "주문 생성")
     @PostMapping
     public ApiResponse<OrderResponse> place(@Valid @RequestBody OrderPlaceRequest request) {
         OrderInfo info = orderPlaceUseCase.place(request.toCommand());
         return ApiResponse.success(OrderResponse.from(info));
     }
 
+    @Operation(summary = "주문 취소")
     @PostMapping("/{orderId}/cancel")
     public ApiResponse<OrderResponse> cancel(@PathVariable Long orderId) {
         OrderInfo info = orderCancelUseCase.cancel(orderId);
         return ApiResponse.success(OrderResponse.from(info));
     }
 
+    @Operation(summary = "주문 상세 조회")
     @GetMapping("/{orderId}")
     public ApiResponse<OrderResponse> getById(@PathVariable Long orderId) {
         OrderInfo info = orderQueryUseCase.getById(orderId);
         return ApiResponse.success(OrderResponse.from(info));
     }
 
+    @Operation(summary = "회원 주문 목록 조회")
     @GetMapping
     public ApiResponse<PageResponse<OrderResponse>> getByMember(
         @RequestParam Long memberId,

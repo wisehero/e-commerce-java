@@ -1,10 +1,9 @@
 package com.commerce.application.order;
 
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-import java.time.ZonedDateTime;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -20,7 +19,6 @@ import com.commerce.domain.order.OrderLine;
 import com.commerce.domain.order.OrderRepository;
 import com.commerce.domain.order.PaymentGateway;
 import com.commerce.domain.order.PaymentResult;
-import com.commerce.domain.product.OptionValue;
 import com.commerce.domain.product.Product;
 import com.commerce.domain.product.ProductRepository;
 import com.commerce.domain.product.Sku;
@@ -46,6 +44,7 @@ public class OrderPlaceUseCase {
     private final SkuRepository skuRepository;
     private final OrderRepository orderRepository;
     private final IssuedCouponRepository issuedCouponRepository;
+    private final OrderCompensationHelper orderCompensationHelper;
     private final Map<String, StockDeducter> stockDeducters;
     private final PaymentGateway paymentGateway;
     private final TransactionTemplate transactionTemplate;
@@ -54,6 +53,7 @@ public class OrderPlaceUseCase {
         ProductRepository productRepository,
         SkuRepository skuRepository, OrderRepository orderRepository,
         IssuedCouponRepository issuedCouponRepository,
+        OrderCompensationHelper orderCompensationHelper,
         Map<String, StockDeducter> stockDeducters, PaymentGateway paymentGateway,
         PlatformTransactionManager transactionManager) {
         this.memberRepository = memberRepository;
@@ -62,6 +62,7 @@ public class OrderPlaceUseCase {
         this.skuRepository = skuRepository;
         this.orderRepository = orderRepository;
         this.issuedCouponRepository = issuedCouponRepository;
+        this.orderCompensationHelper = orderCompensationHelper;
         this.stockDeducters = stockDeducters;
         this.paymentGateway = paymentGateway;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -93,48 +94,64 @@ public class OrderPlaceUseCase {
     }
 
     private Order openPendingOrder(OrderPlaceCommand command, StockDeducter stockDeducter) {
-        memberRepository.findById(command.memberId())
-            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 회원입니다."));
+        ensureMemberExists(command.memberId());
 
-        List<OrderLine> lines = new ArrayList<>();
-        for (OrderPlaceCommand.LineCommand lineCommand : command.lines()) {
-            Sku sku = skuRepository.findById(lineCommand.skuId())
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 SKU입니다."));
-            Product product = productRepository.findById(sku.getProductId())
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 상품입니다."));
-            if (!product.isVisible()) {
-                throw new CoreException(ErrorType.BAD_REQUEST, "구매할 수 없는 상품입니다.");
-            }
-            Brand brand = brandRepository.findById(product.getBrandId())
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 브랜드입니다."));
-            if (!brand.isVisible()) {
-                throw new CoreException(ErrorType.BAD_REQUEST, "구매할 수 없는 브랜드입니다.");
-            }
-
-            lines.add(OrderLine.create(
-                product.getId(), sku.getId(), product.getName(),
-                summarizeOptions(sku.getOptionValues()), sku.getSalePrice(), lineCommand.quantity()
-            ));
-            stockDeducter.deduct(sku.getId(), lineCommand.quantity());
-        }
-
-        Money lineTotal = lines.stream()
-            .map(OrderLine::lineAmount)
-            .reduce(Money.ZERO, Money::plus);
+        List<OrderLine> lines = createOrderLinesAndDeductStock(command, stockDeducter);
+        Money lineTotal = Order.totalAmountOf(lines);
         IssuedCoupon coupon = findCoupon(command.couponId());
         Money discount = coupon == null ? Money.ZERO : coupon.calculateDiscount(lineTotal);
 
         Order order = Order.place(command.memberId(), lines, discount, command.couponId());
         Order saved = orderRepository.save(order);
+        markCouponUsedIfPresent(coupon, command.memberId(), lineTotal, saved.getId());
+        return saved;
+    }
+
+    private void ensureMemberExists(Long memberId) {
+        memberRepository.findById(memberId)
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 회원입니다."));
+    }
+
+    private List<OrderLine> createOrderLinesAndDeductStock(OrderPlaceCommand command, StockDeducter stockDeducter) {
+        List<OrderLine> lines = new ArrayList<>();
+        for (OrderPlaceCommand.LineCommand lineCommand : command.lines()) {
+            lines.add(createOrderLineAndDeductStock(lineCommand, stockDeducter));
+        }
+        return lines;
+    }
+
+    private OrderLine createOrderLineAndDeductStock(OrderPlaceCommand.LineCommand lineCommand,
+        StockDeducter stockDeducter) {
+        Sku sku = skuRepository.findById(lineCommand.skuId())
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 SKU입니다."));
+        Product product = productRepository.findById(sku.getProductId())
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 상품입니다."));
+        if (!product.isVisible()) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "구매할 수 없는 상품입니다.");
+        }
+        Brand brand = brandRepository.findById(product.getBrandId())
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 브랜드입니다."));
+        if (!brand.isVisible()) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "구매할 수 없는 브랜드입니다.");
+        }
+
+        OrderLine orderLine = OrderLine.create(
+            product.getId(), sku.getId(), product.getName(),
+            sku.optionSummary(), sku.getSalePrice(), lineCommand.quantity()
+        );
+        stockDeducter.deduct(sku.getId(), lineCommand.quantity());
+        return orderLine;
+    }
+
+    private void markCouponUsedIfPresent(IssuedCoupon coupon, Long memberId, Money lineTotal, Long orderId) {
         if (coupon != null) {
             ZonedDateTime now = ZonedDateTime.now();
-            coupon.use(command.memberId(), lineTotal, now, saved.getId());
+            coupon.use(memberId, lineTotal, now, orderId);
             if (!issuedCouponRepository.markUsedIfAvailable(
-                coupon.getId(), command.memberId(), now, saved.getId())) {
+                coupon.getId(), memberId, now, orderId)) {
                 throw new CoreException(ErrorType.BAD_REQUEST, "이미 사용했거나 만료된 쿠폰입니다.");
             }
         }
-        return saved;
     }
 
     private Order settlePayment(Long orderId, PaymentResult result) {
@@ -144,8 +161,7 @@ public class OrderPlaceUseCase {
             order.markPaid();
         } else {
             order.cancel();
-            restoreStock(order);
-            restoreCoupon(order);
+            orderCompensationHelper.restore(order);
         }
         return orderRepository.save(order);
     }
@@ -158,24 +174,4 @@ public class OrderPlaceUseCase {
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 쿠폰입니다."));
     }
 
-    private void restoreStock(Order order) {
-        for (OrderLine line : order.getOrderLines()) {
-            Sku sku = skuRepository.findById(line.getSkuId())
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 SKU입니다."));
-            sku.restock(line.getQuantity());
-            skuRepository.save(sku);
-        }
-    }
-
-    private void restoreCoupon(Order order) {
-        if (order.getUsedCouponId() != null) {
-            issuedCouponRepository.restoreByOrderId(order.getId());
-        }
-    }
-
-    private String summarizeOptions(List<OptionValue> optionValues) {
-        return optionValues.stream()
-            .map(option -> option.name() + ":" + option.value())
-            .collect(Collectors.joining(" / "));
-    }
 }

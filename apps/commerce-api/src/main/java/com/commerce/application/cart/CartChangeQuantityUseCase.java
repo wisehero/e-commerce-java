@@ -47,7 +47,7 @@ public class CartChangeQuantityUseCase {
         if (!brand.isVisible()) {
             throw new CoreException(ErrorType.BAD_REQUEST, "구매할 수 없는 브랜드입니다.");
         }
-        if (sku.getStock().quantity() < command.quantity()) {
+        if (!sku.hasEnoughStock(command.quantity())) {
             throw new CoreException(ErrorType.BAD_REQUEST, "재고가 부족합니다.");
         }
 

@@ -6,14 +6,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.commerce.domain.coupon.IssuedCouponRepository;
 import com.commerce.domain.order.Order;
-import com.commerce.domain.order.OrderLine;
 import com.commerce.domain.order.OrderRepository;
 import com.commerce.domain.order.OrderStatus;
 import com.commerce.domain.order.PaymentGateway;
-import com.commerce.domain.product.Sku;
-import com.commerce.domain.product.SkuRepository;
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
 
@@ -25,17 +21,14 @@ import com.commerce.support.error.ErrorType;
 public class OrderCancelUseCase {
 
     private final OrderRepository orderRepository;
-    private final SkuRepository skuRepository;
-    private final IssuedCouponRepository issuedCouponRepository;
+    private final OrderCompensationHelper orderCompensationHelper;
     private final PaymentGateway paymentGateway;
     private final TransactionTemplate transactionTemplate;
 
-    public OrderCancelUseCase(OrderRepository orderRepository, SkuRepository skuRepository,
-        IssuedCouponRepository issuedCouponRepository,
+    public OrderCancelUseCase(OrderRepository orderRepository, OrderCompensationHelper orderCompensationHelper,
         PaymentGateway paymentGateway, PlatformTransactionManager transactionManager) {
         this.orderRepository = orderRepository;
-        this.skuRepository = skuRepository;
-        this.issuedCouponRepository = issuedCouponRepository;
+        this.orderCompensationHelper = orderCompensationHelper;
         this.paymentGateway = paymentGateway;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
@@ -49,8 +42,7 @@ public class OrderCancelUseCase {
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 주문입니다."));
             wasPaid.set(order.getStatus() == OrderStatus.PAID);
             order.cancel();
-            restoreStock(order);
-            restoreCoupon(order);
+            orderCompensationHelper.restore(order);
             return orderRepository.save(order);
         });
 
@@ -59,20 +51,5 @@ public class OrderCancelUseCase {
             paymentGateway.refund(cancelled.getId(), cancelled.getPayableAmount());
         }
         return OrderInfo.from(cancelled);
-    }
-
-    private void restoreStock(Order order) {
-        for (OrderLine line : order.getOrderLines()) {
-            Sku sku = skuRepository.findById(line.getSkuId())
-                .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 SKU입니다."));
-            sku.restock(line.getQuantity());
-            skuRepository.save(sku);
-        }
-    }
-
-    private void restoreCoupon(Order order) {
-        if (order.getUsedCouponId() != null) {
-            issuedCouponRepository.restoreByOrderId(order.getId());
-        }
     }
 }

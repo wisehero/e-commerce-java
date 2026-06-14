@@ -150,6 +150,24 @@ class SkuTest {
     }
 
     @Nested
+    @DisplayName("옵션 요약")
+    class OptionSummary {
+
+        @Test
+        @DisplayName("옵션명과 옵션값을 주문/카트 표시에 쓰는 문자열로 요약한다")
+        void should_summarizeOptions() {
+            // given
+            Sku sku = created();
+
+            // when
+            String summary = sku.optionSummary();
+
+            // then
+            assertThat(summary).isEqualTo("색상:빨강 / 사이즈:L");
+        }
+    }
+
+    @Nested
     @DisplayName("changePrice (정가 변경)")
     class ChangePrice {
 
@@ -198,6 +216,17 @@ class SkuTest {
 
             // then
             assertThat(sku.getStock().quantity()).isEqualTo(70);
+        }
+
+        @Test
+        @DisplayName("요청 수량이 재고 이하인지 확인한다")
+        void should_checkEnoughStock() {
+            // given
+            Sku sku = created();
+
+            // when & then
+            assertThat(sku.hasEnoughStock(100)).isTrue();
+            assertThat(sku.hasEnoughStock(101)).isFalse();
         }
 
         @Test

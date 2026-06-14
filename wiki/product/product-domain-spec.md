@@ -65,8 +65,10 @@
 | stock | Stock | ≥ 0 — 판매 가능 재고 (실물 재고는 WMS 소유, §10) |
 
 - 팩토리: `create(...)`(id=null) / `reconstitute(...)`.
-- 메서드: `applyDiscount(Money)` `clearDiscount()` `changePrice(Money)` `restock(int)` `decreaseStock(int)`.
+- 메서드: `applyDiscount(Money)` `clearDiscount()` `changePrice(Money)` `optionSummary()` `hasEnoughStock(int)` `restock(int)` `decreaseStock(int)`.
 - **SKU 개별 상태 없음** — 옵션 판매 가능성 = `Product.status` + `Brand.status` + 해당 SKU 재고로 판단.
+- `optionSummary()`는 주문·장바구니 표시에서 쓰는 옵션 요약 문자열(`옵션명:옵션값 / 옵션명:옵션값`)을 만든다.
+- `hasEnoughStock(quantity)`는 판매 가능 재고가 요청 수량 이상인지 판단한다.
 
 ## 2. 가격 모델
 
@@ -99,7 +101,7 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 |---|---|---|---|
 | 상품 등록 | `ProductRegisterCommand` | `ProductDetailInfo` | Product+SKU **한 트랜잭션** |
 | 상품 상세 조회 | productId | `ProductDetailInfo` | readOnly, Product+SKU 조립 |
-| 상품 목록/검색 | `ProductSearchCriteria` | `PageResult<ProductSummaryInfo>` | readOnly, name LIKE + categoryId + brandId 필터 |
+| 상품 목록/검색 | `search(keyword, categoryId, brandId, page, size)` | `PageResult<ProductSummaryInfo>` | readOnly, 내부에서 domain `ProductSearchCondition` 조립. name LIKE + categoryId + brandId 필터 |
 | 상품 상태 변경 | productId | — | suspend / resume / discontinue |
 | SKU 가격 변경 | `SkuPriceChangeCommand` | — | applyDiscount / changePrice |
 | SKU 재고 조정 | `SkuStockAdjustCommand` | — | restock |

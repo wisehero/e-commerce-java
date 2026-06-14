@@ -11,7 +11,6 @@ import com.commerce.domain.brand.Brand;
 import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.cart.Cart;
 import com.commerce.domain.cart.CartLine;
-import com.commerce.domain.product.OptionValue;
 import com.commerce.domain.product.Product;
 import com.commerce.domain.product.ProductRepository;
 import com.commerce.domain.product.Sku;
@@ -87,7 +86,7 @@ public class CartInfoAssembler {
             line.getSkuId(),
             line.getQuantity(),
             productName,
-            summarize(sku.getOptionValues()),
+            sku.optionSummary(),
             salePrice,
             subtotal,
             status
@@ -98,15 +97,10 @@ public class CartInfoAssembler {
         if (product == null || !product.isVisible() || brand == null || !brand.isVisible()) {
             return CartLineStatus.UNAVAILABLE;       // 판매중지·단종·브랜드 비활성·미존재
         }
-        if (sku.getStock().quantity() < quantity) {
+        if (!sku.hasEnoughStock(quantity)) {
             return CartLineStatus.OUT_OF_STOCK;      // 재고 부족(0 포함)
         }
         return CartLineStatus.PURCHASABLE;
     }
 
-    private static String summarize(List<OptionValue> options) {
-        return options.stream()
-            .map(option -> option.name() + ":" + option.value())
-            .collect(Collectors.joining(" / "));
-    }
 }

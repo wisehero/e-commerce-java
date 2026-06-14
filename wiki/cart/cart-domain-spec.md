@@ -129,14 +129,14 @@
 | 필드 | 출처 |
 |---|---|
 | skuId, quantity | Cart(저장값) |
-| productName, optionSummary | Product/Sku 실시간 조회 |
+| productName, optionSummary | Product/Sku 실시간 조회. 옵션 요약 형식은 `Sku.optionSummary()`가 제공 |
 | salePrice | Sku 실시간 조회(현재가) |
 | lineSubtotal | `salePrice × quantity` 파생 |
-| status | `PURCHASABLE` / `OUT_OF_STOCK` / `UNAVAILABLE`(판매중지·단종·브랜드 비활성) — Product.status + Brand.status + Sku.stock으로 파생 |
+| status | `PURCHASABLE` / `OUT_OF_STOCK` / `UNAVAILABLE`(판매중지·단종·브랜드 비활성) — Product.status + Brand.status + `Sku.hasEnoughStock(quantity)`로 파생 |
 
 - `CartInfo.cartTotal` = **`PURCHASABLE` 라인 소계 합**. 못 사는 라인은 표시만 하고 총액에서 제외(체크아웃 금액과 일치).
 - 가격은 항상 **현재가**를 보여주므로 "가격 변동" 별도 플래그가 불필요하다(그건 added_price 스냅샷이 필요해 §2 원칙과 충돌 — §13 보류).
-- **`status`는 application(`CartLineInfo`)이 파생**한다. Cart 도메인은 skuId+qty만 알고 순수하게 유지(다른 Aggregate 상태를 모름).
+- **`status`는 application(`CartLineInfo`)이 파생**한다. Cart 도메인은 skuId+qty만 알고 순수하게 유지(다른 Aggregate 상태를 모름). 단, SKU 자체의 표현/판단인 옵션 요약과 재고 충분성은 `Sku.optionSummary()`·`Sku.hasEnoughStock(quantity)`를 사용한다.
 
 ## 7. 체크아웃(카트→주문) — 백엔드 무결합
 

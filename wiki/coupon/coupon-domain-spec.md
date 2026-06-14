@@ -59,7 +59,7 @@
 |---|---|---|---|
 | 영속 매핑 | `DiscountRule` `@Embedded`, UNIQUE(policy_id, member_id) | 낮음 | JPA 연관 어노테이션 없음 유지 |
 | API 표면 | `/api/v1/...` 경로, `CouponControllerV1` 등 | 낮음 | order(`/api/v1/orders`) 컨벤션 유도 |
-| 팩토리·필드명 | `create`/`issue`/`reconstitute`, `issuableFrom/Until`, `usedOrderId`, Money 확장명 | 낮음 | order(`place`/`reconstitute`, `orderedAt`) 컨벤션 유도 |
+| 팩토리·필드명 | `create`/`issue`/`reconstitute`, `issuableFrom/Until`, `usedOrderId`, Money 확장명 | 낮음 | order(`place`/`reconstitute`) 컨벤션 유도 |
 
 ## 1. Aggregate 구조 — 두 Aggregate 분리
 
@@ -122,7 +122,7 @@
   - `calculateDiscount(Money lineTotal)` → `discountRule`에 위임(#24).
   - `use(memberId, lineTotal, now, orderId)` — 소유자·상태·만료·최소금액 invariant 검증 후 `UNUSED→USED` + `usedOrderId` 기록. 동시 중복 사용 차단의 **원자성은 repository 조건부 UPDATE**(§10).
   - `restore(orderId)` — `USED→UNUSED`(§6).
-- `issuedAt`/`expiresAt`은 `BaseJpaEntity.createdAt`에 기대지 않는다(order `orderedAt`과 동일 정신).
+- `issuedAt`/`expiresAt`은 `BaseJpaEntity.createdAt`에 기대지 않고 쿠폰 도메인의 사실로 직접 보유한다.
 
 ## 2. 스냅샷 (발급 = 그 순간 규칙의 박제)
 
@@ -163,9 +163,10 @@ Txn: CouponPolicy.assertIssuable(now)     (발급 가능 기간 검증)
 Txn1: (기존) member·sku·product·brand 검증 + 라인 스냅샷 + 재고 차감
       → couponId 있으면: IssuedCoupon 로드 + 소유자(memberId) 검증
       → discount = issuedCoupon.calculateDiscount(라인합)
-      → 조건부 쿠폰 사용 UPDATE                              (§10, 0행이면 이미사용/만료 → BAD_REQUEST)
       → Order.place(memberId, lines, discount, couponId)    (payableAmount 계산, §8)
-      → Order(PAYMENT_PENDING) 저장 + commit
+      → Order(PAYMENT_PENDING) 저장
+      → couponId 있으면: 저장된 orderId로 조건부 쿠폰 사용 UPDATE (§10, 0행이면 이미사용/만료 → BAD_REQUEST)
+      → commit
 결제 호출   ← 트랜잭션 밖
    payableAmount == 0 이면 게이트웨이 스킵                    [확정 #21]
 Txn2: 성공(또는 0원 스킵) → markPaid()
@@ -241,7 +242,7 @@ Txn2: 성공(또는 0원 스킵) → markPaid()
 | 내 쿠폰 목록 | memberId, status?, page, size | `PageResult<CouponInfo>` | readOnly. 만료는 파생 필터 |
 | (주문 생성 확장) | `OrderPlaceCommand`(+couponId) | `OrderInfo` | order UseCase에 쿠폰 소비 삽입(§5) |
 
-명칭은 `[추정]`(order 컨벤션 유도). 신규 발급/조회는 두 Repository만, 주문 생성은 기존 `OrderPlaceUseCase`에 `IssuedCouponRepository` 의존 추가.
+명칭은 `[추정]`(order 컨벤션 유도). 신규 발급/조회는 두 Repository만, 주문 생성은 기존 `OrderPlaceUseCase`에 `IssuedCouponRepository` 의존을 추가한다. 결제 실패·주문 취소의 재고/쿠폰 복원은 application의 `OrderCompensationHelper`가 묶어 수행한다.
 
 ## 12. 5계층 매핑 `[추정: 경로·명칭]`
 

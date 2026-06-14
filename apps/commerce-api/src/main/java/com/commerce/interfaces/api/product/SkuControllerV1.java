@@ -1,5 +1,7 @@
 package com.commerce.interfaces.api.product;
 
+import io.swagger.v3.oas.annotations.Operation;
+
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,6 +23,7 @@ public class SkuControllerV1 {
     private final SkuPriceChangeUseCase skuPriceChangeUseCase;
     private final SkuStockAdjustUseCase skuStockAdjustUseCase;
 
+    @Operation(summary = "SKU 할인 적용")
     @PatchMapping("/{skuId}/discount")
     public ApiResponse<Object> applyDiscount(
         @PathVariable Long skuId,
@@ -30,6 +33,7 @@ public class SkuControllerV1 {
         return ApiResponse.success();
     }
 
+    @Operation(summary = "SKU 가격 변경")
     @PatchMapping("/{skuId}/price")
     public ApiResponse<Object> changePrice(
         @PathVariable Long skuId,
@@ -39,6 +43,7 @@ public class SkuControllerV1 {
         return ApiResponse.success();
     }
 
+    @Operation(summary = "SKU 재고 추가")
     @PatchMapping("/{skuId}/stock")
     public ApiResponse<Object> restock(
         @PathVariable Long skuId,

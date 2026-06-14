@@ -56,12 +56,13 @@ class OrderCancelUseCaseTest {
     private PlatformTransactionManager transactionManager;
 
     private OrderCancelUseCase useCase;
+    private OrderCompensationHelper orderCompensationHelper;
 
     @BeforeEach
     void setUp() {
         lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
-        useCase = new OrderCancelUseCase(orderRepository, skuRepository, issuedCouponRepository,
-            paymentGateway, transactionManager);
+        orderCompensationHelper = new OrderCompensationHelper(skuRepository, issuedCouponRepository);
+        useCase = new OrderCancelUseCase(orderRepository, orderCompensationHelper, paymentGateway, transactionManager);
     }
 
     private Sku sku() {

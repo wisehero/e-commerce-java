@@ -9,14 +9,13 @@ import com.commerce.domain.member.Member;
 import com.commerce.domain.member.MemberRepository;
 import com.commerce.domain.member.Password;
 
+import lombok.RequiredArgsConstructor;
+
 @Repository
+@RequiredArgsConstructor
 public class MemberRepositoryImpl implements MemberRepository {
 
     private final MemberJpaRepository jpa;
-
-    public MemberRepositoryImpl(MemberJpaRepository jpa) {
-        this.jpa = jpa;
-    }
 
     @Override
     public Member save(Member member) {

@@ -103,7 +103,7 @@ sequenceDiagram
 4. 상품의 브랜드를 조회하고 활성 상태인지 확인한다.
 5. SKU 재고를 주문 수량만큼 차감한다.
 6. 주문 라인에 상품명, 옵션 요약, 주문 시점 판매가를 스냅샷한다.
-7. 라인 금액을 합산해 주문 총액을 계산한다.
+7. `Order.totalAmountOf(lines)`로 라인 금액을 합산해 주문 총액을 계산한다.
 8. `couponId`가 있으면 발급 쿠폰을 조회하고 할인액을 계산한다.
 9. `Order.place(...)`로 `PAYMENT_PENDING` 주문을 생성하고 저장한다.
 10. 쿠폰이 있으면 저장된 주문 ID로 쿠폰을 사용 처리한다.
@@ -272,6 +272,7 @@ payableAmount = totalAmount - discountAmount
 |---|---|
 | 주문 생성 오케스트레이션 | `apps/commerce-api/src/main/java/com/commerce/application/order/OrderPlaceUseCase.java` |
 | 주문 취소 오케스트레이션 | `apps/commerce-api/src/main/java/com/commerce/application/order/OrderCancelUseCase.java` |
+| 주문 보상 처리 | `apps/commerce-api/src/main/java/com/commerce/application/order/OrderCompensationHelper.java` |
 | 주문 도메인 | `apps/commerce-api/src/main/java/com/commerce/domain/order/Order.java` |
 | 주문 라인 스냅샷 | `apps/commerce-api/src/main/java/com/commerce/domain/order/OrderLine.java` |
 | 결제 포트 | `apps/commerce-api/src/main/java/com/commerce/domain/order/PaymentGateway.java` |

@@ -1,5 +1,7 @@
 package com.commerce.interfaces.api.cart;
 
+import io.swagger.v3.oas.annotations.Operation;
+
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -35,16 +37,19 @@ public class CartControllerV1 {
     private final CartRemoveItemUseCase cartRemoveItemUseCase;
     private final CartClearUseCase cartClearUseCase;
 
+    @Operation(summary = "장바구니 조회")
     @GetMapping
     public ApiResponse<CartResponse> view(@RequestParam Long memberId) {
         return ApiResponse.success(CartResponse.from(cartViewUseCase.view(memberId)));
     }
 
+    @Operation(summary = "장바구니 상품 추가")
     @PostMapping("/items")
     public ApiResponse<CartResponse> addItem(@Valid @RequestBody CartAddItemRequest request) {
         return ApiResponse.success(CartResponse.from(cartAddItemUseCase.addItem(request.toCommand())));
     }
 
+    @Operation(summary = "장바구니 상품 수량 변경")
     @PatchMapping("/items/{skuId}")
     public ApiResponse<CartResponse> changeQuantity(
         @PathVariable Long skuId,
@@ -53,11 +58,13 @@ public class CartControllerV1 {
         return ApiResponse.success(CartResponse.from(cartChangeQuantityUseCase.changeQuantity(request.toCommand(skuId))));
     }
 
+    @Operation(summary = "장바구니 상품 삭제")
     @DeleteMapping("/items/{skuId}")
     public ApiResponse<CartResponse> removeItem(@PathVariable Long skuId, @RequestParam Long memberId) {
         return ApiResponse.success(CartResponse.from(cartRemoveItemUseCase.removeItem(memberId, skuId)));
     }
 
+    @Operation(summary = "장바구니 비우기")
     @DeleteMapping
     public ApiResponse<Object> clear(@RequestParam Long memberId) {
         cartClearUseCase.clear(memberId);

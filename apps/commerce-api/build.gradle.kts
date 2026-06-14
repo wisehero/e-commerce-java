@@ -1,3 +1,5 @@
+val springdocOpenApiVersion: String by project
+
 plugins {
     id("org.springframework.boot")
 }
@@ -5,6 +7,7 @@ plugins {
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.security:spring-security-crypto")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocOpenApiVersion")
 
     testImplementation("org.springframework.boot:spring-boot-webmvc-test")
 

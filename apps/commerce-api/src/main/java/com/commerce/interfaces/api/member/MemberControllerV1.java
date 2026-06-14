@@ -1,5 +1,7 @@
 package com.commerce.interfaces.api.member;
 
+import io.swagger.v3.oas.annotations.Operation;
+
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +21,7 @@ public class MemberControllerV1 {
 
     private final MemberSignUpUseCase memberSignUpUseCase;
 
+    @Operation(summary = "회원 가입")
     @PostMapping
     public ApiResponse<SignUpResponse> signUp(@Valid @RequestBody SignUpRequest request) {
         MemberInfo info = memberSignUpUseCase.signUp(request.toCommand());

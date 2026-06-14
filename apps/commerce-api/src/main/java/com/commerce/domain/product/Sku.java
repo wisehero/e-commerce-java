@@ -1,6 +1,7 @@
 package com.commerce.domain.product;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import com.commerce.domain.shared.Money;
 import com.commerce.support.error.CoreException;
@@ -90,6 +91,16 @@ public class Sku {
 
     public boolean isDiscounted() {
         return originalPrice.isGreaterThan(salePrice);
+    }
+
+    public String optionSummary() {
+        return optionValues.stream()
+            .map(option -> option.name() + ":" + option.value())
+            .collect(Collectors.joining(" / "));
+    }
+
+    public boolean hasEnoughStock(int quantity) {
+        return stock.quantity() >= quantity;
     }
 
     public void restock(int count) {

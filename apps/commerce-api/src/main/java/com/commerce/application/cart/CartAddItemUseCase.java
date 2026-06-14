@@ -54,7 +54,7 @@ public class CartAddItemUseCase {
             .orElseGet(() -> Cart.create(command.memberId()));
 
         int desiredQuantity = cart.quantityOf(command.skuId()) + command.quantity();
-        if (sku.getStock().quantity() < desiredQuantity) {
+        if (!sku.hasEnoughStock(desiredQuantity)) {
             throw new CoreException(ErrorType.BAD_REQUEST, "재고가 부족합니다.");
         }
 

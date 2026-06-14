@@ -45,7 +45,7 @@ public class Order {
     }
 
     public static Order place(Long memberId, List<OrderLine> orderLines, Money discountAmount, Long usedCouponId) {
-        Money totalAmount = calculateTotal(orderLines);
+        Money totalAmount = totalAmountOf(orderLines);
         Money normalizedDiscount = discountAmount == null ? Money.ZERO : discountAmount;
         return new Order(null, memberId, OrderStatus.PAYMENT_PENDING, orderLines, totalAmount,
             normalizedDiscount, totalAmount.minus(normalizedDiscount), usedCouponId);
@@ -92,7 +92,7 @@ public class Order {
         }
     }
 
-    private static Money calculateTotal(List<OrderLine> orderLines) {
+    public static Money totalAmountOf(List<OrderLine> orderLines) {
         if (orderLines == null) {
             return Money.ZERO;                 // 빈 주문은 validate()가 막는다
         }

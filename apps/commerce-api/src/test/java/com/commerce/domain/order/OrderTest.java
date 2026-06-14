@@ -111,6 +111,27 @@ class OrderTest {
     }
 
     @Nested
+    @DisplayName("totalAmountOf (주문 총액 계산)")
+    class TotalAmountOf {
+
+        @Test
+        @DisplayName("주문 항목 금액의 합계를 계산한다")
+        void should_calculateTotalAmountOfLines() {
+            // given
+            List<OrderLine> lines = List.of(
+                line(10L, 1000L, 2),
+                line(11L, 500L, 3)
+            );
+
+            // when
+            Money totalAmount = Order.totalAmountOf(lines);
+
+            // then
+            assertThat(totalAmount).isEqualTo(new Money(3500));
+        }
+    }
+
+    @Nested
     @DisplayName("cancel (취소)")
     class Cancel {
 

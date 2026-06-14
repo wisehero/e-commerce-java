@@ -19,14 +19,17 @@ public record OrderPlaceRequest(
     List<LineRequest> lines,
 
     @NotBlank(message = "재고 차감 방식(lockMode)은 필수입니다.")
-    String lockMode
+    String lockMode,
+
+    Long couponId
 ) {
 
     public OrderPlaceCommand toCommand() {
         return new OrderPlaceCommand(
             memberId,
             lines.stream().map(LineRequest::toCommand).toList(),
-            lockMode
+            lockMode,
+            couponId
         );
     }
 

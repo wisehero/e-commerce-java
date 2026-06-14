@@ -23,6 +23,22 @@ public record Money(long amount) {
         return new Money(this.amount + other.amount);
     }
 
+    public Money minus(Money other) {
+        return new Money(this.amount - other.amount);
+    }
+
+    public Money min(Money other) {
+        return this.amount <= other.amount ? this : other;
+    }
+
+    public boolean isLessThan(Money other) {
+        return this.amount < other.amount;
+    }
+
+    public boolean isZero() {
+        return amount == 0;
+    }
+
     /** 주문 라인 금액 = 단가 × 수량 */
     public Money multiply(int quantity) {
         return new Money(this.amount * quantity);

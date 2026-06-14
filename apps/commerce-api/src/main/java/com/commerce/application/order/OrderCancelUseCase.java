@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.commerce.domain.coupon.IssuedCouponRepository;
 import com.commerce.domain.order.Order;
 import com.commerce.domain.order.OrderLine;
 import com.commerce.domain.order.OrderRepository;
@@ -25,13 +26,16 @@ public class OrderCancelUseCase {
 
     private final OrderRepository orderRepository;
     private final SkuRepository skuRepository;
+    private final IssuedCouponRepository issuedCouponRepository;
     private final PaymentGateway paymentGateway;
     private final TransactionTemplate transactionTemplate;
 
     public OrderCancelUseCase(OrderRepository orderRepository, SkuRepository skuRepository,
+        IssuedCouponRepository issuedCouponRepository,
         PaymentGateway paymentGateway, PlatformTransactionManager transactionManager) {
         this.orderRepository = orderRepository;
         this.skuRepository = skuRepository;
+        this.issuedCouponRepository = issuedCouponRepository;
         this.paymentGateway = paymentGateway;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
@@ -46,12 +50,13 @@ public class OrderCancelUseCase {
             wasPaid.set(order.getStatus() == OrderStatus.PAID);
             order.cancel();
             restoreStock(order);
+            restoreCoupon(order);
             return orderRepository.save(order);
         });
 
         // 환불 — 결제됐던 주문만, 트랜잭션 밖
         if (wasPaid.get()) {
-            paymentGateway.refund(cancelled.getId(), cancelled.getTotalAmount());
+            paymentGateway.refund(cancelled.getId(), cancelled.getPayableAmount());
         }
         return OrderInfo.from(cancelled);
     }
@@ -62,6 +67,12 @@ public class OrderCancelUseCase {
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 SKU입니다."));
             sku.restock(line.getQuantity());
             skuRepository.save(sku);
+        }
+    }
+
+    private void restoreCoupon(Order order) {
+        if (order.getUsedCouponId() != null) {
+            issuedCouponRepository.restoreByOrderId(order.getId());
         }
     }
 }

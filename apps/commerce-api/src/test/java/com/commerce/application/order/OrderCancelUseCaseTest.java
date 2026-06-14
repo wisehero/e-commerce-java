@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
+import com.commerce.domain.coupon.IssuedCouponRepository;
 import com.commerce.domain.order.Order;
 import com.commerce.domain.order.OrderLine;
 import com.commerce.domain.order.OrderRepository;
@@ -48,6 +49,8 @@ class OrderCancelUseCaseTest {
     @Mock
     private SkuRepository skuRepository;
     @Mock
+    private IssuedCouponRepository issuedCouponRepository;
+    @Mock
     private PaymentGateway paymentGateway;
     @Mock
     private PlatformTransactionManager transactionManager;
@@ -57,7 +60,8 @@ class OrderCancelUseCaseTest {
     @BeforeEach
     void setUp() {
         lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
-        useCase = new OrderCancelUseCase(orderRepository, skuRepository, paymentGateway, transactionManager);
+        useCase = new OrderCancelUseCase(orderRepository, skuRepository, issuedCouponRepository,
+            paymentGateway, transactionManager);
     }
 
     private Sku sku() {
@@ -70,12 +74,19 @@ class OrderCancelUseCaseTest {
         return Order.reconstitute(ORDER_ID, MEMBER_ID, status, List.of(line), new Money(16000));
     }
 
+    private Order couponOrderWith(OrderStatus status) {
+        OrderLine line = OrderLine.reconstitute(1L, PRODUCT_ID, SKU_ID, "맨투맨", "색상:빨강", new Money(8000), 2);
+        return Order.reconstitute(ORDER_ID, MEMBER_ID, status, List.of(line),
+            new Money(16000), new Money(5000), new Money(11000), 50L);
+    }
+
     private void givenStockRestorable() {
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku()));
         given(skuRepository.save(any(Sku.class))).willAnswer(inv -> inv.getArgument(0));
         given(orderRepository.save(any(Order.class))).willAnswer(inv -> {
             Order o = inv.getArgument(0);
-            return Order.reconstitute(ORDER_ID, o.getMemberId(), o.getStatus(), o.getOrderLines(), o.getTotalAmount());
+            return Order.reconstitute(ORDER_ID, o.getMemberId(), o.getStatus(), o.getOrderLines(),
+                o.getTotalAmount(), o.getDiscountAmount(), o.getPayableAmount(), o.getUsedCouponId());
         });
     }
 
@@ -113,6 +124,22 @@ class OrderCancelUseCaseTest {
             assertThat(info.status()).isEqualTo("CANCELLED");
             then(skuRepository).should().save(any(Sku.class));
             then(paymentGateway).should(never()).refund(any(), any());
+        }
+
+        @Test
+        @DisplayName("쿠폰 적용 주문을 취소하면 쿠폰을 복원하고 청구액 기준으로 환불한다")
+        void should_restoreCouponAndRefundPayableAmount_when_couponOrderPaid() {
+            // given
+            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(couponOrderWith(OrderStatus.PAID)));
+            givenStockRestorable();
+
+            // when
+            OrderInfo info = useCase.cancel(ORDER_ID);
+
+            // then
+            assertThat(info.status()).isEqualTo("CANCELLED");
+            then(issuedCouponRepository).should().restoreByOrderId(ORDER_ID);
+            then(paymentGateway).should().refund(ORDER_ID, new Money(11000));
         }
 
         @Test

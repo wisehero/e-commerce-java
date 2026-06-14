@@ -27,6 +27,10 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 import com.commerce.domain.brand.Brand;
 import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.brand.BrandStatus;
+import com.commerce.domain.coupon.DiscountRule;
+import com.commerce.domain.coupon.DiscountType;
+import com.commerce.domain.coupon.IssuedCoupon;
+import com.commerce.domain.coupon.IssuedCouponRepository;
 import com.commerce.domain.member.Member;
 import com.commerce.domain.member.MemberRepository;
 import com.commerce.domain.order.Order;
@@ -54,6 +58,7 @@ class OrderPlaceUseCaseTest {
     private static final Long SKU_ID = 10L;
     private static final Long PRODUCT_ID = 100L;
     private static final Long ORDER_ID = 1000L;
+    private static final Long COUPON_ID = 50L;
 
     @Mock
     private MemberRepository memberRepository;
@@ -65,6 +70,8 @@ class OrderPlaceUseCaseTest {
     private SkuRepository skuRepository;
     @Mock
     private OrderRepository orderRepository;
+    @Mock
+    private IssuedCouponRepository issuedCouponRepository;
     @Mock
     private StockDeducter stockDeducter;
     @Mock
@@ -78,7 +85,7 @@ class OrderPlaceUseCaseTest {
     void setUp() {
         lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         useCase = new OrderPlaceUseCase(memberRepository, brandRepository, productRepository, skuRepository, orderRepository,
-            Map.of("optimistic", stockDeducter), paymentGateway, transactionManager);
+            issuedCouponRepository, Map.of("optimistic", stockDeducter), paymentGateway, transactionManager);
     }
 
     private OrderPlaceCommand command(String lockMode) {
@@ -103,6 +110,15 @@ class OrderPlaceUseCaseTest {
         return Order.reconstitute(ORDER_ID, MEMBER_ID, OrderStatus.PAYMENT_PENDING, List.of(line), new Money(16000));
     }
 
+    private IssuedCoupon coupon() {
+        return IssuedCoupon.reconstitute(COUPON_ID, 20L, MEMBER_ID,
+            new DiscountRule(DiscountType.FIXED, 5000L, null, Money.ZERO),
+            com.commerce.domain.coupon.CouponStatus.UNUSED,
+            java.time.ZonedDateTime.now().minusDays(1),
+            java.time.ZonedDateTime.now().plusDays(1),
+            null);
+    }
+
     private void givenValidCatalog() {
         given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(mock(Member.class)));
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku()));
@@ -110,9 +126,15 @@ class OrderPlaceUseCaseTest {
         given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.ACTIVE)));
         given(orderRepository.save(any(Order.class))).willAnswer(inv -> {
             Order o = inv.getArgument(0);
-            return Order.reconstitute(ORDER_ID, o.getMemberId(), o.getStatus(), o.getOrderLines(), o.getTotalAmount());
+            return Order.reconstitute(ORDER_ID, o.getMemberId(), o.getStatus(), o.getOrderLines(),
+                o.getTotalAmount(), o.getDiscountAmount(), o.getPayableAmount(), o.getUsedCouponId());
         });
         given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(pendingOrder()));
+    }
+
+    private OrderPlaceCommand couponCommand(String lockMode) {
+        return new OrderPlaceCommand(MEMBER_ID, List.of(new OrderPlaceCommand.LineCommand(SKU_ID, 2)),
+            lockMode, COUPON_ID);
     }
 
     @Nested
@@ -136,6 +158,30 @@ class OrderPlaceUseCaseTest {
             then(paymentGateway).should().pay(eq(ORDER_ID), any());
             then(paymentGateway).should(never()).refund(any(), any());
         }
+
+        @Test
+        @DisplayName("쿠폰을 적용하면 청구액으로 결제하고 쿠폰을 사용 처리한다")
+        void should_payPayableAmountAndUseCoupon_when_couponApplied() {
+            // given
+            givenValidCatalog();
+            given(issuedCouponRepository.findById(COUPON_ID)).willReturn(Optional.of(coupon()));
+            given(issuedCouponRepository.markUsedIfAvailable(eq(COUPON_ID), eq(MEMBER_ID), any(), eq(ORDER_ID)))
+                .willReturn(true);
+            given(paymentGateway.pay(eq(ORDER_ID), eq(new Money(11000)))).willReturn(PaymentResult.success());
+            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(
+                Order.reconstitute(ORDER_ID, MEMBER_ID, OrderStatus.PAYMENT_PENDING,
+                    pendingOrder().getOrderLines(), new Money(16000), new Money(5000), new Money(11000), COUPON_ID)));
+
+            // when
+            OrderInfo info = useCase.place(couponCommand("optimistic"));
+
+            // then
+            assertThat(info.discountAmount()).isEqualTo(5000L);
+            assertThat(info.payableAmount()).isEqualTo(11000L);
+            assertThat(info.usedCouponId()).isEqualTo(COUPON_ID);
+            then(paymentGateway).should().pay(ORDER_ID, new Money(11000));
+            then(issuedCouponRepository).should().markUsedIfAvailable(eq(COUPON_ID), eq(MEMBER_ID), any(), eq(ORDER_ID));
+        }
     }
 
     @Nested
@@ -157,6 +203,28 @@ class OrderPlaceUseCaseTest {
             assertThat(info.status()).isEqualTo("CANCELLED");
             then(skuRepository).should().save(any(Sku.class));         // 재고 복원
             then(paymentGateway).should(never()).refund(any(), any()); // 결제 실패라 환불 없음
+        }
+
+        @Test
+        @DisplayName("쿠폰 적용 주문의 결제 실패 시 쿠폰을 복원한다")
+        void should_restoreCoupon_when_couponOrderPaymentFails() {
+            // given
+            givenValidCatalog();
+            given(issuedCouponRepository.findById(COUPON_ID)).willReturn(Optional.of(coupon()));
+            given(issuedCouponRepository.markUsedIfAvailable(eq(COUPON_ID), eq(MEMBER_ID), any(), eq(ORDER_ID)))
+                .willReturn(true);
+            given(paymentGateway.pay(eq(ORDER_ID), any())).willReturn(PaymentResult.failure());
+            given(skuRepository.save(any(Sku.class))).willAnswer(inv -> inv.getArgument(0));
+            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(
+                Order.reconstitute(ORDER_ID, MEMBER_ID, OrderStatus.PAYMENT_PENDING,
+                    pendingOrder().getOrderLines(), new Money(16000), new Money(5000), new Money(11000), COUPON_ID)));
+
+            // when
+            OrderInfo info = useCase.place(couponCommand("optimistic"));
+
+            // then
+            assertThat(info.status()).isEqualTo("CANCELLED");
+            then(issuedCouponRepository).should().restoreByOrderId(ORDER_ID);
         }
     }
 

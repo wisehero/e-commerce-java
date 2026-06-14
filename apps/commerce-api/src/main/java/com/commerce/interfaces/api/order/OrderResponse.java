@@ -10,7 +10,10 @@ public record OrderResponse(
     Long memberId,
     String status,
     List<OrderLineResponse> lines,
-    long totalAmount
+    long totalAmount,
+    long discountAmount,
+    long payableAmount,
+    Long usedCouponId
 ) {
 
     public static OrderResponse from(OrderInfo info) {
@@ -19,7 +22,10 @@ public record OrderResponse(
             info.memberId(),
             info.status(),
             info.lines().stream().map(OrderLineResponse::from).toList(),
-            info.totalAmount()
+            info.totalAmount(),
+            info.discountAmount(),
+            info.payableAmount(),
+            info.usedCouponId()
         );
     }
 

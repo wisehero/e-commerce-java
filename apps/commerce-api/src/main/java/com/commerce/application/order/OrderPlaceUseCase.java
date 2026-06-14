@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.time.ZonedDateTime;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -11,6 +12,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.commerce.domain.brand.Brand;
 import com.commerce.domain.brand.BrandRepository;
+import com.commerce.domain.coupon.IssuedCoupon;
+import com.commerce.domain.coupon.IssuedCouponRepository;
 import com.commerce.domain.member.MemberRepository;
 import com.commerce.domain.order.Order;
 import com.commerce.domain.order.OrderLine;
@@ -23,6 +26,7 @@ import com.commerce.domain.product.ProductRepository;
 import com.commerce.domain.product.Sku;
 import com.commerce.domain.product.SkuRepository;
 import com.commerce.domain.product.StockDeducter;
+import com.commerce.domain.shared.Money;
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
 
@@ -41,6 +45,7 @@ public class OrderPlaceUseCase {
     private final ProductRepository productRepository;
     private final SkuRepository skuRepository;
     private final OrderRepository orderRepository;
+    private final IssuedCouponRepository issuedCouponRepository;
     private final Map<String, StockDeducter> stockDeducters;
     private final PaymentGateway paymentGateway;
     private final TransactionTemplate transactionTemplate;
@@ -48,6 +53,7 @@ public class OrderPlaceUseCase {
     public OrderPlaceUseCase(MemberRepository memberRepository, BrandRepository brandRepository,
         ProductRepository productRepository,
         SkuRepository skuRepository, OrderRepository orderRepository,
+        IssuedCouponRepository issuedCouponRepository,
         Map<String, StockDeducter> stockDeducters, PaymentGateway paymentGateway,
         PlatformTransactionManager transactionManager) {
         this.memberRepository = memberRepository;
@@ -55,6 +61,7 @@ public class OrderPlaceUseCase {
         this.productRepository = productRepository;
         this.skuRepository = skuRepository;
         this.orderRepository = orderRepository;
+        this.issuedCouponRepository = issuedCouponRepository;
         this.stockDeducters = stockDeducters;
         this.paymentGateway = paymentGateway;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -67,7 +74,9 @@ public class OrderPlaceUseCase {
         Order pending = transactionTemplate.execute(status -> openPendingOrder(command, stockDeducter));
 
         // 결제 호출 — 트랜잭션 밖 (락 미점유)
-        PaymentResult result = paymentGateway.pay(pending.getId(), pending.getTotalAmount());
+        PaymentResult result = pending.getPayableAmount().isZero()
+            ? PaymentResult.success()
+            : paymentGateway.pay(pending.getId(), pending.getPayableAmount());
 
         // Txn2: 결제 결과 반영 (성공 → PAID / 실패 → CANCELLED + 재고 복원)
         Order settled = transactionTemplate.execute(status -> settlePayment(pending.getId(), result));
@@ -109,8 +118,23 @@ public class OrderPlaceUseCase {
             stockDeducter.deduct(sku.getId(), lineCommand.quantity());
         }
 
-        Order order = Order.place(command.memberId(), lines);
-        return orderRepository.save(order);
+        Money lineTotal = lines.stream()
+            .map(OrderLine::lineAmount)
+            .reduce(Money.ZERO, Money::plus);
+        IssuedCoupon coupon = findCoupon(command.couponId());
+        Money discount = coupon == null ? Money.ZERO : coupon.calculateDiscount(lineTotal);
+
+        Order order = Order.place(command.memberId(), lines, discount, command.couponId());
+        Order saved = orderRepository.save(order);
+        if (coupon != null) {
+            ZonedDateTime now = ZonedDateTime.now();
+            coupon.use(command.memberId(), lineTotal, now, saved.getId());
+            if (!issuedCouponRepository.markUsedIfAvailable(
+                coupon.getId(), command.memberId(), now, saved.getId())) {
+                throw new CoreException(ErrorType.BAD_REQUEST, "이미 사용했거나 만료된 쿠폰입니다.");
+            }
+        }
+        return saved;
     }
 
     private Order settlePayment(Long orderId, PaymentResult result) {
@@ -121,8 +145,17 @@ public class OrderPlaceUseCase {
         } else {
             order.cancel();
             restoreStock(order);
+            restoreCoupon(order);
         }
         return orderRepository.save(order);
+    }
+
+    private IssuedCoupon findCoupon(Long couponId) {
+        if (couponId == null) {
+            return null;
+        }
+        return issuedCouponRepository.findById(couponId)
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 쿠폰입니다."));
     }
 
     private void restoreStock(Order order) {
@@ -131,6 +164,12 @@ public class OrderPlaceUseCase {
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 SKU입니다."));
             sku.restock(line.getQuantity());
             skuRepository.save(sku);
+        }
+    }
+
+    private void restoreCoupon(Order order) {
+        if (order.getUsedCouponId() != null) {
+            issuedCouponRepository.restoreByOrderId(order.getId());
         }
     }
 

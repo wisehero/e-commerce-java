@@ -25,7 +25,7 @@
 | id | Long | |
 | name | String | not blank, 길이 제한 |
 | description | String | 상세설명 |
-| categoryId | Long | ID 참조, 존재검증 보류 |
+| categoryId | Long | ID 참조, **필수**. 등록 시 존재 + 리프(소분류) 검증(카테고리 도메인 도입) — [`../category/category-domain-spec.md`](../category/category-domain-spec.md) |
 | brandId | Long | ID 참조, **필수**. 등록 시 존재 검증(브랜드 도메인 도입). 노출은 브랜드 ACTIVE 게이트를 함께 받음 — [`../brand/brand-domain-spec.md`](../brand/brand-domain-spec.md) |
 | imageUrl | String | 대표 이미지 1장 |
 | status | ProductStatus | `ON_SALE` / `SUSPENDED` / `DISCONTINUED` |
@@ -91,7 +91,7 @@
 domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring Data `Pageable`/`Page`를 도메인에 노출하지 않는다.
 
 - `PageResult<T>(List<T> items, long totalCount, int page, int size)` — **제네릭**, 위치: `com.commerce.support.page` (어디서든 참조 가능). `totalPages()`/`hasNext()` 파생 메서드 보유.
-- `ProductSearchCondition(String keyword, Long categoryId, Long brandId, int page, int size)` — **상품 전용**, 위치: `com.commerce.domain.product`. 상품 전용 필드(keyword·categoryId·brandId)라 범용 support가 아닌 product 도메인에 둔다. domain `ProductRepository.search(...)`가 직접 참조하므로 domain에 있어야 한다. `keyword`·`categoryId`·`brandId`는 선택 필터(null 허용), `page`는 **0-base**.
+- `ProductSearchCondition(String keyword, List<Long> categoryIds, Long brandId, int page, int size)` — **상품 전용**, 위치: `com.commerce.domain.product`. 상품 전용 필드(keyword·categoryIds·brandId)라 범용 support가 아닌 product 도메인에 둔다. domain `ProductRepository.search(...)`가 직접 참조하므로 domain에 있어야 한다. `keyword`·`categoryIds`·`brandId`는 선택 필터(null 허용), `page`는 **0-base**. `categoryIds`는 카테고리 도메인 도입으로 단일 `categoryId`에서 바뀌었다 — 상위 카테고리 검색 시 하위 리프까지 펼친 id 목록을 받아 `IN` 필터한다([`../category/category-domain-spec.md`](../category/category-domain-spec.md) §3).
   - **이름이 `*Criteria`가 아닌 이유**: `ddd.md §7`·ArchUnit 규칙상 `*Criteria`는 **application 계층 전용** 조회 경계 객체다. 이 객체는 domain Repository 인터페이스가 소유하는 query 객체(DDD Specification 성격)이므로 `*Criteria`로 명명하면 컨벤션과 충돌한다. 그래서 domain 적합 이름인 `Condition`을 쓴다. (초기엔 `ProductSearchCriteria`로 잘못 명명해 ArchUnit이 위반을 잡았고, 개명으로 해소.)
 - infrastructure에서 `Condition → Spring Data Pageable`, `Page → PageResult` 변환. **Spring Data 의존은 infra에 가둔다.**
 
@@ -101,7 +101,7 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 |---|---|---|---|
 | 상품 등록 | `ProductRegisterCommand` | `ProductDetailInfo` | Product+SKU **한 트랜잭션** |
 | 상품 상세 조회 | productId | `ProductDetailInfo` | readOnly, Product+SKU 조립 |
-| 상품 목록/검색 | `search(keyword, categoryId, brandId, page, size)` | `PageResult<ProductSummaryInfo>` | readOnly, 내부에서 domain `ProductSearchCondition` 조립. name LIKE + categoryId + brandId 필터 |
+| 상품 목록/검색 | `search(keyword, categoryId, brandId, page, size)` | `PageResult<ProductSummaryInfo>` | readOnly. `categoryId`를 하위 리프까지 펼쳐 `ProductSearchCondition.categoryIds` 조립. name LIKE + categoryId IN + brandId 필터 |
 | 상품 상태 변경 | productId | — | suspend / resume / discontinue |
 | SKU 가격 변경 | `SkuPriceChangeCommand` | — | applyDiscount / changePrice |
 | SKU 재고 조정 | `SkuStockAdjustCommand` | — | restock |
@@ -140,7 +140,8 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 ## 9. 보류·확장 지점 (의식적으로 미룸)
 
 - 재고 차감 동시성 락 → **주문 도메인**에서 결정(낙관적 `@Version` 유력).
-- ~~Brand 도메인 + ID 존재 검증~~ → 해소: [`../brand/brand-domain-spec.md`](../brand/brand-domain-spec.md)(brandId 필수화·존재검증·노출 게이트). Category 도메인 + 존재 검증은 여전히 보류.
+- ~~Brand 도메인 + ID 존재 검증~~ → 해소: [`../brand/brand-domain-spec.md`](../brand/brand-domain-spec.md)(brandId 필수화·존재검증·노출 게이트).
+- ~~Category 도메인 + 존재 검증~~ → 해소: [`../category/category-domain-spec.md`](../category/category-domain-spec.md)(categoryId 존재+리프 검증, 상위 검색 하위 펼침).
 - 검색엔진(현재 DB LIKE).
 - 인증/인가(현재 권한 보류).
 - 상품 기본정보 수정·옵션 추가/삭제.

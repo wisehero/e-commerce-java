@@ -1,10 +1,12 @@
 package com.commerce.domain.product;
 
+import java.util.List;
+
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
 
 public record ProductSearchCondition(
-    String keyword, Long categoryId, Long brandId, int page, int size
+    String keyword, List<Long> categoryIds, Long brandId, int page, int size
 ) {
 
     private static final int MAX_SIZE = 100;

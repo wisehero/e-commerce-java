@@ -3,6 +3,8 @@ package com.commerce.infrastructure.product;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import java.util.List;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -99,5 +101,40 @@ class ProductBrandSearchIntegrationTest extends IntegrationTestSupport {
         // then
         assertThat(activeResult.items()).hasSize(1);
         assertThat(inactiveResult.items()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("categoryIds 목록으로 검색하면 해당 카테고리 상품만 IN 필터로 노출한다")
+    void should_filterByCategoryIds() {
+        // given
+        Brand brand = brandRepository.save(Brand.register("브랜드", "b.jpg"));
+        productRepository.save(Product.register("상의 상품", "설명", 10L, brand.getId(), "p1.jpg"));
+        productRepository.save(Product.register("하의 상품", "설명", 20L, brand.getId(), "p2.jpg"));
+        productRepository.save(Product.register("신발 상품", "설명", 30L, brand.getId(), "p3.jpg"));
+
+        // when : 상위 카테고리를 펼친 결과(10, 20)를 흉내 낸 id 목록
+        PageResult<Product> result =
+            productRepository.search(new ProductSearchCondition(null, List.of(10L, 20L), null, 0, 10));
+
+        // then
+        assertThat(result.items())
+            .extracting(Product::getName)
+            .containsExactlyInAnyOrder("상의 상품", "하의 상품");
+    }
+
+    @Test
+    @DisplayName("categoryIds가 null이면 카테고리 필터 없이 전체를 노출한다")
+    void should_notFilterByCategory_when_categoryIdsNull() {
+        // given
+        Brand brand = brandRepository.save(Brand.register("브랜드", "b.jpg"));
+        productRepository.save(Product.register("상품A", "설명", 10L, brand.getId(), "p1.jpg"));
+        productRepository.save(Product.register("상품B", "설명", 20L, brand.getId(), "p2.jpg"));
+
+        // when
+        PageResult<Product> result =
+            productRepository.search(new ProductSearchCondition(null, null, null, 0, 10));
+
+        // then
+        assertThat(result.items()).hasSize(2);
     }
 }

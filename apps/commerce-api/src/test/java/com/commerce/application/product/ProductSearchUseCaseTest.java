@@ -15,6 +15,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.commerce.domain.category.CategoryRepository;
 import com.commerce.domain.product.OptionValue;
 import com.commerce.domain.product.Product;
 import com.commerce.domain.product.ProductRepository;
@@ -34,6 +35,9 @@ class ProductSearchUseCaseTest {
 
     @Mock
     private SkuRepository skuRepository;
+
+    @Mock
+    private CategoryRepository categoryRepository;
 
     @InjectMocks
     private ProductSearchUseCase useCase;
@@ -91,10 +95,11 @@ class ProductSearchUseCaseTest {
         }
 
         @Test
-        @DisplayName("브랜드 필터를 ProductSearchCondition으로 전달한다")
-        void should_passBrandIdFilter_when_search() {
+        @DisplayName("카테고리 필터는 하위 카테고리까지 펼쳐 ProductSearchCondition으로 전달한다")
+        void should_expandCategoryAndPassFilter_when_search() {
             // given
-            ProductSearchCondition condition = new ProductSearchCondition("맨투맨", 1L, 2L, 0, 20);
+            given(categoryRepository.findSelfAndDescendantIds(1L)).willReturn(List.of(1L, 5L, 6L));
+            ProductSearchCondition condition = new ProductSearchCondition("맨투맨", List.of(1L, 5L, 6L), 2L, 0, 20);
             given(productRepository.search(condition))
                 .willReturn(new PageResult<>(List.of(), 0, 0, 20));
             given(skuRepository.findByProductIds(anyList())).willReturn(List.of());
@@ -103,7 +108,24 @@ class ProductSearchUseCaseTest {
             useCase.search("맨투맨", 1L, 2L, 0, 20);
 
             // then
+            assertThat(condition.categoryIds()).containsExactly(1L, 5L, 6L);
             assertThat(condition.brandId()).isEqualTo(2L);
+        }
+
+        @Test
+        @DisplayName("카테고리 필터가 없으면 카테고리를 펼치지 않고 그대로 검색한다")
+        void should_notExpandCategory_when_categoryIdNull() {
+            // given
+            ProductSearchCondition condition = new ProductSearchCondition(null, null, null, 0, 20);
+            given(productRepository.search(condition))
+                .willReturn(new PageResult<>(List.of(), 0, 0, 20));
+            given(skuRepository.findByProductIds(anyList())).willReturn(List.of());
+
+            // when
+            useCase.search(null, null, null, 0, 20);
+
+            // then
+            assertThat(condition.categoryIds()).isNull();
         }
     }
 }

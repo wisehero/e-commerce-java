@@ -1,5 +1,7 @@
 package com.commerce.infrastructure.product;
 
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,7 +19,7 @@ public interface ProductJpaRepository extends JpaRepository<ProductJpaEntity, Lo
         WHERE p.status = :status
           AND b.status = :brandStatus
           AND (:keyword IS NULL OR p.name LIKE CONCAT('%', :keyword, '%'))
-          AND (:categoryId IS NULL OR p.categoryId = :categoryId)
+          AND (:categoryIds IS NULL OR p.categoryId IN (:categoryIds))
           AND (:brandId IS NULL OR p.brandId = :brandId)
         """, countQuery = """
         SELECT COUNT(p) FROM ProductJpaEntity p
@@ -25,13 +27,13 @@ public interface ProductJpaRepository extends JpaRepository<ProductJpaEntity, Lo
         WHERE p.status = :status
           AND b.status = :brandStatus
           AND (:keyword IS NULL OR p.name LIKE CONCAT('%', :keyword, '%'))
-          AND (:categoryId IS NULL OR p.categoryId = :categoryId)
+          AND (:categoryIds IS NULL OR p.categoryId IN (:categoryIds))
           AND (:brandId IS NULL OR p.brandId = :brandId)
         """)
     Page<ProductJpaEntity> search(@Param("status") ProductStatus status,
         @Param("brandStatus") BrandStatus brandStatus,
         @Param("keyword") String keyword,
-        @Param("categoryId") Long categoryId,
+        @Param("categoryIds") List<Long> categoryIds,
         @Param("brandId") Long brandId,
         Pageable pageable);
 

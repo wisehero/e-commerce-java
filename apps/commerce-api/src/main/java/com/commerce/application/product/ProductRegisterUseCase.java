@@ -7,6 +7,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.commerce.domain.brand.Brand;
 import com.commerce.domain.brand.BrandRepository;
+import com.commerce.domain.category.Category;
+import com.commerce.domain.category.CategoryRepository;
 import com.commerce.domain.product.OptionValue;
 import com.commerce.domain.product.Product;
 import com.commerce.domain.product.ProductRepository;
@@ -26,6 +28,7 @@ public class ProductRegisterUseCase {
     private final ProductRepository productRepository;
     private final SkuRepository skuRepository;
     private final BrandRepository brandRepository;
+    private final CategoryRepository categoryRepository;
 
     @Transactional
     public ProductDetailInfo register(ProductRegisterCommand command) {
@@ -34,6 +37,13 @@ public class ProductRegisterUseCase {
         }
         Brand brand = brandRepository.findById(command.brandId())
             .orElseThrow(() -> new CoreException(ErrorType.BAD_REQUEST, "존재하지 않는 브랜드입니다."));
+
+        // 상품은 최하위(리프) 카테고리에만 매달린다. 실재 여부와 리프 여부를 함께 검증한다.
+        Category category = categoryRepository.findById(command.categoryId())
+            .orElseThrow(() -> new CoreException(ErrorType.BAD_REQUEST, "존재하지 않는 카테고리입니다."));
+        if (!category.isLeaf()) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "상품은 최하위 카테고리에만 등록할 수 있습니다.");
+        }
 
         Product product = Product.register(
             command.name(), command.description(), command.categoryId(),

@@ -58,7 +58,7 @@ public class ProductRepositoryImpl implements ProductRepository {
 
         Page<ProductJpaEntity> page = jpa.search(
             ProductStatus.ON_SALE, BrandStatus.ACTIVE,
-            condition.keyword(), condition.categoryId(), condition.brandId(), pageable
+            condition.keyword(), condition.categoryIds(), condition.brandId(), pageable
         );
 
         List<Product> items = page.getContent().stream()

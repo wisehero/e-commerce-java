@@ -25,6 +25,9 @@ import com.commerce.application.product.ProductRegisterCommand.SkuRegisterComman
 import com.commerce.domain.brand.Brand;
 import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.brand.BrandStatus;
+import com.commerce.domain.category.Category;
+import com.commerce.domain.category.CategoryRepository;
+import com.commerce.domain.category.CategoryStatus;
 import com.commerce.domain.product.Product;
 import com.commerce.domain.product.ProductRepository;
 import com.commerce.domain.product.Sku;
@@ -44,6 +47,9 @@ class ProductRegisterUseCaseTest {
     @Mock
     private BrandRepository brandRepository;
 
+    @Mock
+    private CategoryRepository categoryRepository;
+
     @InjectMocks
     private ProductRegisterUseCase useCase;
 
@@ -53,6 +59,11 @@ class ProductRegisterUseCaseTest {
 
     private SkuRegisterCommand skuCommand(long price, int stock) {
         return new SkuRegisterCommand(List.of(new OptionValueCommand("색상", "빨강")), price, stock);
+    }
+
+    private void givenLeafCategory() {
+        given(categoryRepository.findById(1L))
+            .willReturn(Optional.of(Category.reconstitute(1L, "셔츠", 9L, 3, 0, CategoryStatus.ACTIVE)));
     }
 
     @Nested
@@ -66,6 +77,7 @@ class ProductRegisterUseCaseTest {
             ProductRegisterCommand command = commandWithSkus(List.of(skuCommand(10000, 100)));
             given(brandRepository.findById(2L))
                 .willReturn(Optional.of(Brand.reconstitute(2L, "나이키", "logo.jpg", BrandStatus.ACTIVE)));
+            givenLeafCategory();
             given(productRepository.save(any(Product.class))).willAnswer(inv -> {
                 Product p = inv.getArgument(0);
                 return Product.reconstitute(10L, p.getName(), p.getDescription(),
@@ -92,6 +104,7 @@ class ProductRegisterUseCaseTest {
             ProductRegisterCommand command = commandWithSkus(List.of(skuCommand(10000, 100), skuCommand(20000, 50)));
             given(brandRepository.findById(2L))
                 .willReturn(Optional.of(Brand.reconstitute(2L, "나이키", "logo.jpg", BrandStatus.ACTIVE)));
+            givenLeafCategory();
             given(productRepository.save(any(Product.class))).willAnswer(inv -> {
                 Product p = inv.getArgument(0);
                 return Product.reconstitute(10L, p.getName(), p.getDescription(),
@@ -123,6 +136,40 @@ class ProductRegisterUseCaseTest {
                 .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
             then(productRepository).should(never()).save(any());
             then(skuRepository).should(never()).saveAll(anyList());
+            then(categoryRepository).should(never()).findById(any());
+        }
+
+        @Test
+        @DisplayName("카테고리가 존재하지 않으면 BAD_REQUEST 예외가 발생하고 상품을 저장하지 않는다")
+        void should_throwBadRequest_when_categoryMissing() {
+            // given
+            ProductRegisterCommand command = commandWithSkus(List.of(skuCommand(10000, 100)));
+            given(brandRepository.findById(2L))
+                .willReturn(Optional.of(Brand.reconstitute(2L, "나이키", "logo.jpg", BrandStatus.ACTIVE)));
+            given(categoryRepository.findById(1L)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> useCase.register(command))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+            then(productRepository).should(never()).save(any());
+        }
+
+        @Test
+        @DisplayName("카테고리가 최하위(리프)가 아니면 BAD_REQUEST 예외가 발생하고 상품을 저장하지 않는다")
+        void should_throwBadRequest_when_categoryNotLeaf() {
+            // given
+            ProductRegisterCommand command = commandWithSkus(List.of(skuCommand(10000, 100)));
+            given(brandRepository.findById(2L))
+                .willReturn(Optional.of(Brand.reconstitute(2L, "나이키", "logo.jpg", BrandStatus.ACTIVE)));
+            given(categoryRepository.findById(1L))
+                .willReturn(Optional.of(Category.reconstitute(1L, "패션", null, 1, 0, CategoryStatus.ACTIVE)));
+
+            // when & then
+            assertThatThrownBy(() -> useCase.register(command))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+            then(productRepository).should(never()).save(any());
         }
 
         @Test

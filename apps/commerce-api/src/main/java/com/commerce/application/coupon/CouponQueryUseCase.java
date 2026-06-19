@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.commerce.domain.coupon.CouponStatus;
 import com.commerce.domain.coupon.IssuedCoupon;
 import com.commerce.domain.coupon.IssuedCouponRepository;
+import com.commerce.support.page.PageQuery;
 import com.commerce.support.page.PageResult;
 
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,9 @@ public class CouponQueryUseCase {
     @Transactional(readOnly = true)
     public PageResult<CouponInfo> getByMember(Long memberId, String status, int page, int size) {
         ZonedDateTime now = ZonedDateTime.now();
-        PageResult<IssuedCoupon> result = issuedCouponRepository.findByMemberId(memberId, parseStatus(status), page, size);
+        PageQuery pageQuery = new PageQuery(page, size);
+        PageResult<IssuedCoupon> result = issuedCouponRepository.findByMemberId(
+            memberId, parseStatus(status), pageQuery.page(), pageQuery.size());
         return new PageResult<>(
             result.items().stream().map(coupon -> CouponInfo.from(coupon, now)).toList(),
             result.totalCount(),

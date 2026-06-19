@@ -4,6 +4,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -11,8 +12,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.commerce.domain.brand.Brand;
 import com.commerce.domain.brand.BrandRepository;
+import com.commerce.domain.category.CategoryRepository;
+import com.commerce.domain.coupon.ApplicabilityScope;
+import com.commerce.domain.coupon.DiscountableLine;
 import com.commerce.domain.coupon.IssuedCoupon;
 import com.commerce.domain.coupon.IssuedCouponRepository;
+import com.commerce.domain.coupon.ScopeType;
 import com.commerce.domain.member.MemberRepository;
 import com.commerce.domain.order.Order;
 import com.commerce.domain.order.OrderLine;
@@ -42,6 +47,7 @@ public class OrderPlaceUseCase {
     private final BrandRepository brandRepository;
     private final ProductRepository productRepository;
     private final SkuRepository skuRepository;
+    private final CategoryRepository categoryRepository;
     private final OrderRepository orderRepository;
     private final IssuedCouponRepository issuedCouponRepository;
     private final OrderCompensationHelper orderCompensationHelper;
@@ -51,7 +57,7 @@ public class OrderPlaceUseCase {
 
     public OrderPlaceUseCase(MemberRepository memberRepository, BrandRepository brandRepository,
         ProductRepository productRepository,
-        SkuRepository skuRepository, OrderRepository orderRepository,
+        SkuRepository skuRepository, CategoryRepository categoryRepository, OrderRepository orderRepository,
         IssuedCouponRepository issuedCouponRepository,
         OrderCompensationHelper orderCompensationHelper,
         Map<String, StockDeducter> stockDeducters, PaymentGateway paymentGateway,
@@ -60,6 +66,7 @@ public class OrderPlaceUseCase {
         this.brandRepository = brandRepository;
         this.productRepository = productRepository;
         this.skuRepository = skuRepository;
+        this.categoryRepository = categoryRepository;
         this.orderRepository = orderRepository;
         this.issuedCouponRepository = issuedCouponRepository;
         this.orderCompensationHelper = orderCompensationHelper;
@@ -96,14 +103,19 @@ public class OrderPlaceUseCase {
     private Order openPendingOrder(OrderPlaceCommand command, StockDeducter stockDeducter) {
         ensureMemberExists(command.memberId());
 
-        List<OrderLine> lines = createOrderLinesAndDeductStock(command, stockDeducter);
-        Money lineTotal = Order.totalAmountOf(lines);
+        List<PreparedLine> prepared = createOrderLinesAndDeductStock(command, stockDeducter);
+        List<OrderLine> lines = prepared.stream().map(PreparedLine::orderLine).toList();
+        List<DiscountableLine> discountableLines = prepared.stream().map(PreparedLine::discountableLine).toList();
+
         IssuedCoupon coupon = findCoupon(command.couponId());
-        Money discount = coupon == null ? Money.ZERO : coupon.calculateDiscount(lineTotal);
+        Set<Long> resolvedCategoryIds = resolveCategoryIds(coupon);
+        Money discount = coupon == null
+            ? Money.ZERO
+            : coupon.calculateDiscount(discountableLines, resolvedCategoryIds);
 
         Order order = Order.place(command.memberId(), lines, discount, command.couponId());
         Order saved = orderRepository.save(order);
-        markCouponUsedIfPresent(coupon, command.memberId(), lineTotal, saved.getId());
+        markCouponUsedIfPresent(coupon, command.memberId(), discountableLines, resolvedCategoryIds, saved.getId());
         return saved;
     }
 
@@ -112,15 +124,15 @@ public class OrderPlaceUseCase {
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 회원입니다."));
     }
 
-    private List<OrderLine> createOrderLinesAndDeductStock(OrderPlaceCommand command, StockDeducter stockDeducter) {
-        List<OrderLine> lines = new ArrayList<>();
+    private List<PreparedLine> createOrderLinesAndDeductStock(OrderPlaceCommand command, StockDeducter stockDeducter) {
+        List<PreparedLine> prepared = new ArrayList<>();
         for (OrderPlaceCommand.LineCommand lineCommand : command.lines()) {
-            lines.add(createOrderLineAndDeductStock(lineCommand, stockDeducter));
+            prepared.add(createOrderLineAndDeductStock(lineCommand, stockDeducter));
         }
-        return lines;
+        return prepared;
     }
 
-    private OrderLine createOrderLineAndDeductStock(OrderPlaceCommand.LineCommand lineCommand,
+    private PreparedLine createOrderLineAndDeductStock(OrderPlaceCommand.LineCommand lineCommand,
         StockDeducter stockDeducter) {
         Sku sku = skuRepository.findById(lineCommand.skuId())
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 SKU입니다."));
@@ -140,13 +152,30 @@ public class OrderPlaceUseCase {
             sku.optionSummary(), sku.getSalePrice(), lineCommand.quantity()
         );
         stockDeducter.deduct(sku.getId(), lineCommand.quantity());
-        return orderLine;
+
+        // 쿠폰 scope 매칭용 중립 입력. 박제하지 않고 이 트랜잭션에서만 쓰고 버린다.
+        DiscountableLine discountableLine = new DiscountableLine(
+            orderLine.lineAmount(), product.getId(), product.getBrandId(), product.getCategoryId());
+        return new PreparedLine(orderLine, discountableLine);
     }
 
-    private void markCouponUsedIfPresent(IssuedCoupon coupon, Long memberId, Money lineTotal, Long orderId) {
+    /** CATEGORY scope면 대상 카테고리의 서브트리 id 집합을 주문 시점에 신선 해소한다. 그 외엔 빈 집합. */
+    private Set<Long> resolveCategoryIds(IssuedCoupon coupon) {
+        if (coupon == null) {
+            return Set.of();
+        }
+        ApplicabilityScope scope = coupon.getApplicabilityScope();
+        if (scope.type() == ScopeType.CATEGORY) {
+            return Set.copyOf(categoryRepository.findSelfAndDescendantIds(scope.targetId()));
+        }
+        return Set.of();
+    }
+
+    private void markCouponUsedIfPresent(IssuedCoupon coupon, Long memberId, List<DiscountableLine> lines,
+        Set<Long> resolvedCategoryIds, Long orderId) {
         if (coupon != null) {
             ZonedDateTime now = ZonedDateTime.now();
-            coupon.use(memberId, lineTotal, now, orderId);
+            coupon.use(memberId, lines, resolvedCategoryIds, now, orderId);
             if (!issuedCouponRepository.markUsedIfAvailable(
                 coupon.getId(), memberId, now, orderId)) {
                 throw new CoreException(ErrorType.BAD_REQUEST, "이미 사용했거나 만료된 쿠폰입니다.");
@@ -172,6 +201,10 @@ public class OrderPlaceUseCase {
         }
         return issuedCouponRepository.findById(couponId)
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 쿠폰입니다."));
+    }
+
+    /** 주문 라인 생성 결과: 영속용 OrderLine과 쿠폰 계산용 DiscountableLine 한 쌍. */
+    private record PreparedLine(OrderLine orderLine, DiscountableLine discountableLine) {
     }
 
 }

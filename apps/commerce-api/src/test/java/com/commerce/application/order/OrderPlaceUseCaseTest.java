@@ -27,6 +27,8 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 import com.commerce.domain.brand.Brand;
 import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.brand.BrandStatus;
+import com.commerce.domain.category.CategoryRepository;
+import com.commerce.domain.coupon.ApplicabilityScope;
 import com.commerce.domain.coupon.DiscountRule;
 import com.commerce.domain.coupon.DiscountType;
 import com.commerce.domain.coupon.IssuedCoupon;
@@ -69,6 +71,8 @@ class OrderPlaceUseCaseTest {
     @Mock
     private SkuRepository skuRepository;
     @Mock
+    private CategoryRepository categoryRepository;
+    @Mock
     private OrderRepository orderRepository;
     @Mock
     private IssuedCouponRepository issuedCouponRepository;
@@ -86,7 +90,8 @@ class OrderPlaceUseCaseTest {
     void setUp() {
         lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         orderCompensationHelper = new OrderCompensationHelper(skuRepository, issuedCouponRepository);
-        useCase = new OrderPlaceUseCase(memberRepository, brandRepository, productRepository, skuRepository, orderRepository,
+        useCase = new OrderPlaceUseCase(memberRepository, brandRepository, productRepository, skuRepository,
+            categoryRepository, orderRepository,
             issuedCouponRepository, orderCompensationHelper, Map.of("optimistic", stockDeducter), paymentGateway,
             transactionManager);
     }
@@ -115,6 +120,7 @@ class OrderPlaceUseCaseTest {
 
     private IssuedCoupon coupon() {
         return IssuedCoupon.reconstitute(COUPON_ID, 20L, MEMBER_ID,
+            ApplicabilityScope.whole(),
             new DiscountRule(DiscountType.FIXED, 5000L, null, Money.ZERO),
             com.commerce.domain.coupon.CouponStatus.UNUSED,
             java.time.ZonedDateTime.now().minusDays(1),

@@ -19,13 +19,14 @@ class MemberTest {
     private static final Email VALID_EMAIL = new Email("user@example.com");
     private static final Password VALID_PASSWORD = Password.of("password123", HASHER);
     private static final String VALID_NICKNAME = "오딘";
+    private static final MemberGrade VALID_GRADE = MemberGrade.GOLD;
 
     @Nested
     @DisplayName("register (신규 가입)")
     class Register {
 
         @Test
-        @DisplayName("id 없이 USER 권한으로 생성된다")
+        @DisplayName("id 없이 USER 권한, BRONZE 등급으로 생성된다")
         void should_createWithoutId_andUserRole_when_register() {
             // when
             Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
@@ -36,7 +37,8 @@ class MemberTest {
                 .satisfies(m -> assertThat(m.getEmail()).isEqualTo(VALID_EMAIL))
                 .satisfies(m -> assertThat(m.getPassword()).isEqualTo(VALID_PASSWORD))
                 .satisfies(m -> assertThat(m.getNickname()).isEqualTo(VALID_NICKNAME))
-                .satisfies(m -> assertThat(m.getRole()).isEqualTo(MemberRole.USER));
+                .satisfies(m -> assertThat(m.getRole()).isEqualTo(MemberRole.USER))
+                .satisfies(m -> assertThat(m.getGrade()).isEqualTo(MemberGrade.BRONZE));
         }
 
         @Test
@@ -85,16 +87,17 @@ class MemberTest {
     class Reconstitute {
 
         @Test
-        @DisplayName("id와 role을 그대로 복원한다")
+        @DisplayName("id, role, grade를 그대로 복원한다")
         void should_reconstitute_when_validArgs() {
             // when
             Member member = Member.reconstitute(
-                42L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.ADMIN);
+                42L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.ADMIN, MemberGrade.VIP);
 
             // then
             assertThat(member)
                 .satisfies(m -> assertThat(m.getId()).isEqualTo(42L))
-                .satisfies(m -> assertThat(m.getRole()).isEqualTo(MemberRole.ADMIN));
+                .satisfies(m -> assertThat(m.getRole()).isEqualTo(MemberRole.ADMIN))
+                .satisfies(m -> assertThat(m.getGrade()).isEqualTo(MemberGrade.VIP));
         }
 
         @Test
@@ -102,7 +105,17 @@ class MemberTest {
         void should_throwException_when_reconstitute_roleNull() {
             // when & then
             assertThatThrownBy(() -> Member.reconstitute(
-                    1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, null))
+                    1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, null, VALID_GRADE))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+        }
+
+        @Test
+        @DisplayName("등급이 null이면 BAD_REQUEST 예외가 발생한다")
+        void should_throwException_when_reconstitute_gradeNull() {
+            // when & then
+            assertThatThrownBy(() -> Member.reconstitute(
+                    1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.USER, null))
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
         }
@@ -117,7 +130,7 @@ class MemberTest {
         void should_returnTrue_when_isAdmin_andRoleAdmin() {
             // given
             Member admin = Member.reconstitute(
-                1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.ADMIN);
+                1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.ADMIN, VALID_GRADE);
 
             // when & then
             assertThat(admin.isAdmin()).isTrue();
@@ -188,6 +201,36 @@ class MemberTest {
 
             // when & then
             assertThatThrownBy(() -> member.changeNickname(nickname))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+        }
+    }
+
+    @Nested
+    @DisplayName("changeGrade")
+    class ChangeGrade {
+
+        @Test
+        @DisplayName("유효한 등급이면 변경된다")
+        void should_changeGrade_when_valid() {
+            // given
+            Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
+
+            // when
+            member.changeGrade(MemberGrade.VIP);
+
+            // then
+            assertThat(member.getGrade()).isEqualTo(MemberGrade.VIP);
+        }
+
+        @Test
+        @DisplayName("등급이 null이면 BAD_REQUEST 예외가 발생한다")
+        void should_throwException_when_changeGrade_null() {
+            // given
+            Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
+
+            // when & then
+            assertThatThrownBy(() -> member.changeGrade(null))
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
         }

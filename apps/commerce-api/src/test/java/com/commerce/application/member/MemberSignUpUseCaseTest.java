@@ -52,7 +52,7 @@ class MemberSignUpUseCaseTest {
             given(memberRepository.save(any(Member.class))).willAnswer(invocation -> {
                 Member m = invocation.getArgument(0);
                 return Member.reconstitute(
-                    42L, m.getEmail(), m.getPassword(), m.getNickname(), m.getRole());
+                    42L, m.getEmail(), m.getPassword(), m.getNickname(), m.getRole(), m.getGrade());
             });
 
             // when

@@ -16,22 +16,25 @@ public class Member {
     private Password password;
     private String nickname;
     private MemberRole role;
+    private MemberGrade grade;
 
-    private Member(Long id, Email email, Password password, String nickname, MemberRole role) {
+    private Member(Long id, Email email, Password password, String nickname, MemberRole role, MemberGrade grade) {
         this.id = id;
         this.email = email;
         this.password = password;
         this.nickname = nickname;
         this.role = role;
+        this.grade = grade;
         validate();
     }
 
     public static Member register(Email email, Password password, String nickname) {
-        return new Member(null, email, password, nickname, MemberRole.USER);
+        return new Member(null, email, password, nickname, MemberRole.USER, MemberGrade.BRONZE);
     }
 
-    public static Member reconstitute(Long id, Email email, Password password, String nickname, MemberRole role) {
-        return new Member(id, email, password, nickname, role);
+    public static Member reconstitute(Long id, Email email, Password password, String nickname, MemberRole role,
+        MemberGrade grade) {
+        return new Member(id, email, password, nickname, role, grade);
     }
 
     private void validate() {
@@ -44,6 +47,8 @@ public class Member {
 
         if (role == null)
             throw new CoreException(ErrorType.BAD_REQUEST, "권한은 필수입니다.");
+        if (grade == null)
+            throw new CoreException(ErrorType.BAD_REQUEST, "등급은 필수입니다.");
     }
 
     private static void validateNickname(String nickname) {
@@ -68,6 +73,14 @@ public class Member {
     public void changeNickname(String newNickname) {
         validateNickname(newNickname);
         this.nickname = newNickname;
+    }
+
+    /** 운영자가 회원 등급을 변경한다. 자동 산정이 아니라 수동 지정이다. */
+    public void changeGrade(MemberGrade newGrade) {
+        if (newGrade == null) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "변경할 등급은 필수입니다.");
+        }
+        this.grade = newGrade;
     }
 
 }

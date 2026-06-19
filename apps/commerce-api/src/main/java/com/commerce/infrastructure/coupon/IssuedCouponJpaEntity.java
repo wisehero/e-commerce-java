@@ -38,6 +38,9 @@ public class IssuedCouponJpaEntity extends BaseJpaEntity {
     private Long memberId;
 
     @Embedded
+    private ApplicabilityScopeEmbeddable applicabilityScope;
+
+    @Embedded
     private DiscountRuleEmbeddable discountRule;
 
     @Enumerated(EnumType.STRING)
@@ -53,10 +56,12 @@ public class IssuedCouponJpaEntity extends BaseJpaEntity {
     @Column(name = "used_order_id")
     private Long usedOrderId;
 
-    private IssuedCouponJpaEntity(Long policyId, Long memberId, DiscountRuleEmbeddable discountRule,
-        CouponStatus status, ZonedDateTime issuedAt, ZonedDateTime expiresAt, Long usedOrderId) {
+    private IssuedCouponJpaEntity(Long policyId, Long memberId, ApplicabilityScopeEmbeddable applicabilityScope,
+        DiscountRuleEmbeddable discountRule, CouponStatus status, ZonedDateTime issuedAt, ZonedDateTime expiresAt,
+        Long usedOrderId) {
         this.policyId = policyId;
         this.memberId = memberId;
+        this.applicabilityScope = applicabilityScope;
         this.discountRule = discountRule;
         this.status = status;
         this.issuedAt = issuedAt;
@@ -68,6 +73,7 @@ public class IssuedCouponJpaEntity extends BaseJpaEntity {
         return new IssuedCouponJpaEntity(
             issuedCoupon.getPolicyId(),
             issuedCoupon.getMemberId(),
+            ApplicabilityScopeEmbeddable.fromDomain(issuedCoupon.getApplicabilityScope()),
             DiscountRuleEmbeddable.fromDomain(issuedCoupon.getDiscountRule()),
             issuedCoupon.getStatus(),
             issuedCoupon.getIssuedAt(),
@@ -81,6 +87,7 @@ public class IssuedCouponJpaEntity extends BaseJpaEntity {
             getId(),
             policyId,
             memberId,
+            applicabilityScope.toDomain(),
             discountRule.toDomain(),
             status,
             issuedAt,

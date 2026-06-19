@@ -17,13 +17,21 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.Map;
+
 import com.commerce.application.coupon.CouponIssueCommand;
 import com.commerce.application.coupon.CouponIssueUseCase;
+import com.commerce.domain.coupon.ApplicabilityScope;
 import com.commerce.domain.coupon.CouponPolicy;
 import com.commerce.domain.coupon.CouponPolicyRepository;
 import com.commerce.domain.coupon.DiscountRule;
 import com.commerce.domain.coupon.DiscountType;
+import com.commerce.domain.member.Email;
+import com.commerce.domain.member.Member;
+import com.commerce.domain.member.MemberRepository;
+import com.commerce.domain.member.Password;
 import com.commerce.domain.shared.Money;
+import com.commerce.infrastructure.member.MemberJpaRepository;
 import com.commerce.support.IntegrationTestSupport;
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
@@ -42,10 +50,24 @@ class CouponIssueConcurrencyIntegrationTest extends IntegrationTestSupport {
     @Autowired
     private IssuedCouponJpaRepository issuedCouponJpaRepository;
 
+    @Autowired
+    private MemberRepository memberRepository;
+
+    @Autowired
+    private MemberJpaRepository memberJpaRepository;
+
     @AfterEach
     void tearDown() {
         issuedCouponJpaRepository.deleteAll();
         couponPolicyJpaRepository.deleteAll();
+        memberJpaRepository.deleteAll();
+    }
+
+    /** 발급은 회원 존재를 검증하므로(등급 조회) 실제 회원을 만들어 그 id를 쓴다. */
+    private Long createMember(int seq) {
+        Member member = Member.register(
+            new Email("m" + seq + "@test.com"), Password.ofHashed("hashed:pw"), "nick" + seq);
+        return memberRepository.save(member).getId();
     }
 
     @Test
@@ -54,6 +76,10 @@ class CouponIssueConcurrencyIntegrationTest extends IntegrationTestSupport {
         // given
         CouponPolicy policy = couponPolicyRepository.save(policy(5L));
         int requestCount = 20;
+        List<Long> memberIds = new ArrayList<>();
+        for (int i = 0; i < requestCount; i++) {
+            memberIds.add(createMember(i));
+        }
         CountDownLatch ready = new CountDownLatch(requestCount);
         CountDownLatch start = new CountDownLatch(1);
         AtomicInteger successCount = new AtomicInteger();
@@ -61,7 +87,7 @@ class CouponIssueConcurrencyIntegrationTest extends IntegrationTestSupport {
         var executor = Executors.newFixedThreadPool(requestCount);
         List<Future<?>> futures = new ArrayList<>();
         for (int i = 0; i < requestCount; i++) {
-            long memberId = i + 1L;
+            long memberId = memberIds.get(i);
             futures.add(executor.submit(() -> {
                 ready.countDown();
                 start.await();
@@ -95,10 +121,11 @@ class CouponIssueConcurrencyIntegrationTest extends IntegrationTestSupport {
     void should_throwConflict_when_sameMemberIssuesSamePolicyTwice() {
         // given
         CouponPolicy policy = couponPolicyRepository.save(policy(10L));
-        couponIssueUseCase.issue(new CouponIssueCommand(policy.getId(), 1L));
+        Long memberId = createMember(1);
+        couponIssueUseCase.issue(new CouponIssueCommand(policy.getId(), memberId));
 
         // when & then
-        assertThatThrownBy(() -> couponIssueUseCase.issue(new CouponIssueCommand(policy.getId(), 1L)))
+        assertThatThrownBy(() -> couponIssueUseCase.issue(new CouponIssueCommand(policy.getId(), memberId)))
             .isInstanceOf(CoreException.class)
             .extracting("errorType").isEqualTo(ErrorType.CONFLICT);
 
@@ -112,6 +139,8 @@ class CouponIssueConcurrencyIntegrationTest extends IntegrationTestSupport {
         return CouponPolicy.create(
             "선착순 쿠폰",
             new DiscountRule(DiscountType.FIXED, 1000L, null, Money.ZERO),
+            ApplicabilityScope.whole(),
+            Map.of(),
             7,
             now.minusHours(1),
             now.plusHours(1),

@@ -2,6 +2,7 @@ package com.commerce.infrastructure.member;
 
 import com.commerce.domain.member.Email;
 import com.commerce.domain.member.Member;
+import com.commerce.domain.member.MemberGrade;
 import com.commerce.domain.member.MemberRole;
 import com.commerce.domain.member.Password;
 import com.commerce.infrastructure.jpa.BaseJpaEntity;
@@ -36,14 +37,19 @@ public class MemberJpaEntity extends BaseJpaEntity {
     @Column(name = "role", nullable = false, length = 20)
     private MemberRole role;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "grade", nullable = false, length = 20)
+    private MemberGrade grade;
+
     protected MemberJpaEntity() {
     }
 
-    private MemberJpaEntity(String email, String password, String nickname, MemberRole role) {
+    private MemberJpaEntity(String email, String password, String nickname, MemberRole role, MemberGrade grade) {
         this.email = email;
         this.password = password;
         this.nickname = nickname;
         this.role = role;
+        this.grade = grade;
     }
 
     /** 도메인 → 신규 엔티티 */
@@ -52,7 +58,8 @@ public class MemberJpaEntity extends BaseJpaEntity {
             member.getEmail().value(),
             member.getPassword().hashedValue(),
             member.getNickname(),
-            member.getRole()
+            member.getRole(),
+            member.getGrade()
         );
     }
 
@@ -63,7 +70,8 @@ public class MemberJpaEntity extends BaseJpaEntity {
             new Email(email),
             Password.ofHashed(password),
             nickname,
-            role
+            role,
+            grade
         );
     }
 
@@ -73,6 +81,7 @@ public class MemberJpaEntity extends BaseJpaEntity {
         this.password = member.getPassword().hashedValue();
         this.nickname = member.getNickname();
         this.role = member.getRole();
+        this.grade = member.getGrade();
     }
 
 }

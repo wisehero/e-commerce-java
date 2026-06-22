@@ -7,6 +7,7 @@ import com.commerce.domain.order.Order;
 import com.commerce.domain.order.OrderRepository;
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
+import com.commerce.support.page.PageQuery;
 import com.commerce.support.page.PageResult;
 
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,8 @@ public class OrderQueryUseCase {
 
     @Transactional(readOnly = true)
     public PageResult<OrderInfo> getByMember(Long memberId, int page, int size) {
-        PageResult<Order> orders = orderRepository.findByMemberId(memberId, page, size);
+        PageQuery pageQuery = new PageQuery(page, size);
+        PageResult<Order> orders = orderRepository.findByMemberId(memberId, pageQuery.page(), pageQuery.size());
         return new PageResult<>(
             orders.items().stream().map(OrderInfo::from).toList(),
             orders.totalCount(), orders.page(), orders.size()

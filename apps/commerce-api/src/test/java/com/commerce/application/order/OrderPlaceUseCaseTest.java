@@ -24,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
+import com.commerce.application.purchase.PurchasableItemResolver;
 import com.commerce.domain.brand.Brand;
 import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.brand.BrandStatus;
@@ -90,10 +91,13 @@ class OrderPlaceUseCaseTest {
     void setUp() {
         lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         orderCompensationHelper = new OrderCompensationHelper(skuRepository, issuedCouponRepository);
-        useCase = new OrderPlaceUseCase(memberRepository, brandRepository, productRepository, skuRepository,
-            categoryRepository, orderRepository,
-            issuedCouponRepository, orderCompensationHelper, Map.of("optimistic", stockDeducter), paymentGateway,
-            transactionManager);
+        PurchasableItemResolver purchasableItemResolver = new PurchasableItemResolver(skuRepository, productRepository,
+            brandRepository);
+        OrderLinePreparer orderLinePreparer = new OrderLinePreparer(purchasableItemResolver,
+            Map.of("optimistic", stockDeducter));
+        OrderCouponApplier orderCouponApplier = new OrderCouponApplier(issuedCouponRepository, categoryRepository);
+        useCase = new OrderPlaceUseCase(memberRepository, orderRepository, orderLinePreparer, orderCouponApplier,
+            orderCompensationHelper, paymentGateway, transactionManager);
     }
 
     private OrderPlaceCommand command(String lockMode) {

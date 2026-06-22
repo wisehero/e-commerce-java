@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.commerce.application.purchase.PurchasableItemResolver;
 import com.commerce.domain.brand.Brand;
 import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.brand.BrandStatus;
@@ -55,8 +56,9 @@ class CartChangeQuantityUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new CartChangeQuantityUseCase(cartRepository, skuRepository, productRepository,
-            brandRepository, assembler);
+        PurchasableItemResolver resolver = new PurchasableItemResolver(skuRepository, productRepository,
+            brandRepository);
+        useCase = new CartChangeQuantityUseCase(cartRepository, resolver, assembler);
     }
 
     private CartChangeQuantityCommand command(int quantity) {

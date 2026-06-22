@@ -52,9 +52,9 @@ public class CouponPolicyCreateUseCase {
         return CouponPolicyInfo.from(couponPolicyRepository.save(policy));
     }
 
-    private DiscountRule buildRule(String discountType, long value, Long maxDiscountAmount, long minOrderAmount) {
+    private DiscountRule buildRule(DiscountType discountType, long value, Long maxDiscountAmount, long minOrderAmount) {
         return new DiscountRule(
-            parseDiscountType(discountType),
+            discountType,
             value,
             maxDiscountAmount == null ? null : new Money(maxDiscountAmount),
             new Money(minOrderAmount)
@@ -62,8 +62,7 @@ public class CouponPolicyCreateUseCase {
     }
 
     /** 적용 범위를 만들고, 한정 범위면 대상 존재를 검증한다(죽은 쿠폰 차단). */
-    private ApplicabilityScope buildScope(String scopeType, Long targetId) {
-        ScopeType type = parseScopeType(scopeType);
+    private ApplicabilityScope buildScope(ScopeType type, Long targetId) {
         ApplicabilityScope scope = switch (type) {
             case WHOLE -> ApplicabilityScope.whole();
             case BRAND -> ApplicabilityScope.brand(targetId);
@@ -102,37 +101,9 @@ public class CouponPolicyCreateUseCase {
             return overrides;
         }
         for (CouponPolicyCreateCommand.GradeOverride override : command.gradeOverrides()) {
-            MemberGrade grade = parseGrade(override.grade());
-            overrides.put(grade, buildRule(override.discountType(), override.discountValue(),
+            overrides.put(override.grade(), buildRule(override.discountType(), override.discountValue(),
                 override.maxDiscountAmount(), override.minOrderAmount()));
         }
         return overrides;
-    }
-
-    private DiscountType parseDiscountType(String value) {
-        try {
-            return DiscountType.valueOf(value);
-        } catch (IllegalArgumentException | NullPointerException e) {
-            throw new CoreException(ErrorType.BAD_REQUEST, "지원하지 않는 할인 유형입니다: " + value);
-        }
-    }
-
-    private ScopeType parseScopeType(String value) {
-        if (value == null || value.isBlank()) {
-            return ScopeType.WHOLE;
-        }
-        try {
-            return ScopeType.valueOf(value);
-        } catch (IllegalArgumentException e) {
-            throw new CoreException(ErrorType.BAD_REQUEST, "지원하지 않는 적용 범위입니다: " + value);
-        }
-    }
-
-    private MemberGrade parseGrade(String value) {
-        try {
-            return MemberGrade.valueOf(value);
-        } catch (IllegalArgumentException | NullPointerException e) {
-            throw new CoreException(ErrorType.BAD_REQUEST, "지원하지 않는 회원 등급입니다: " + value);
-        }
     }
 }

@@ -3,6 +3,7 @@ package com.commerce.application.order;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 import java.util.List;
 import java.util.Optional;
@@ -91,6 +92,26 @@ class OrderQueryUseCaseTest {
             assertThat(result.items().get(0).id()).isEqualTo(ORDER_ID);
             assertThat(result.totalCount()).isEqualTo(1L);
             assertThat(result.page()).isZero();
+        }
+
+        @Test
+        @DisplayName("page가 음수면 repository 호출 전에 BAD_REQUEST로 막는다")
+        void should_throwBadRequest_when_negativePage() {
+            assertThatThrownBy(() -> useCase.getByMember(MEMBER_ID, -1, 10))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+
+            then(orderRepository).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("size가 0이면 repository 호출 전에 BAD_REQUEST로 막는다")
+        void should_throwBadRequest_when_zeroSize() {
+            assertThatThrownBy(() -> useCase.getByMember(MEMBER_ID, 0, 0))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+
+            then(orderRepository).shouldHaveNoInteractions();
         }
     }
 }

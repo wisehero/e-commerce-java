@@ -218,5 +218,18 @@ class OrderControllerV1Test {
             mockMvc.perform(get("/api/v1/orders"))
                 .andExpect(status().isBadRequest());
         }
+
+        @Test
+        @DisplayName("page가 정수가 아니면 400 — 타입 불일치도 BAD_REQUEST로 잡고 UseCase 미호출")
+        void should_return400_when_pageNotInteger() throws Exception {
+            mockMvc.perform(get("/api/v1/orders")
+                    .param("memberId", "1")
+                    .param("page", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.meta.result").value("FAIL"))
+                .andExpect(jsonPath("$.meta.errorCode").value("Bad Request"));
+
+            then(orderQueryUseCase).should(never()).getByMember(anyLong(), anyInt(), anyInt());
+        }
     }
 }

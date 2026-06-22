@@ -74,6 +74,14 @@ public class IssuedCoupon {
         return discountRule.calculateDiscount(base);
     }
 
+    /**
+     * 미사용 쿠폰을 사용 처리한다. 소유자·미사용·만료·매칭 라인을 검증하고 UNUSED→USED로 전이한다.
+     *
+     * <p>이 상태 전이는 단일 트랜잭션 안에서의 도메인 표현이다. 실제 영속과 동시 중복 사용 차단은
+     * {@code IssuedCouponRepository.markUsedIfAvailable}의 조건부 원자 UPDATE가 맡는다(동일 가드:
+     * memberId·UNUSED·미만료). 주문 흐름(OrderCouponApplier)은 이 객체를 save하지 않으므로, 여기서
+     * 바뀐 상태가 곧장 DB에 반영되지는 않는다 — 두 경로의 규칙이 어긋나지 않게 유지해야 한다(coupon-domain-spec §10).
+     */
     public void use(Long memberId, List<DiscountableLine> lines, Set<Long> resolvedCategoryIds,
         ZonedDateTime now, Long orderId) {
         if (!this.memberId.equals(memberId)) {
@@ -93,6 +101,11 @@ public class IssuedCoupon {
         this.usedOrderId = orderId;
     }
 
+    /**
+     * 사용된 쿠폰을 복원한다(USED→UNUSED). use()와 대칭이며, 주문 취소·결제 실패 보상의 실제 복원은
+     * {@code IssuedCouponRepository.restoreByOrderId}의 조건부 원자 UPDATE가 직접 수행한다(멱등).
+     * 현재 보상 흐름(OrderCompensationHelper)은 그 UPDATE를 호출하므로 이 메서드를 거치지 않는다.
+     */
     public void restore(Long orderId) {
         if (status != CouponStatus.USED) {
             return;

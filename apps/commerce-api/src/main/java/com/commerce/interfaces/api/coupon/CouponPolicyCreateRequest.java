@@ -59,13 +59,15 @@ public record CouponPolicyCreateRequest(
     }
 
     public CouponPolicyCreateCommand toCommand() {
+        // raw string을 그대로 넘기고, 도메인 enum 해석은 application 경계 객체(Command 팩토리)가 맡는다.
+        // interfaces가 DiscountType/ScopeType/MemberGrade를 직접 참조하지 않게 하기 위함.
         List<CouponPolicyCreateCommand.GradeOverride> overrides = gradeOverrides == null
             ? List.of()
             : gradeOverrides.stream()
-                .map(o -> new CouponPolicyCreateCommand.GradeOverride(
+                .map(o -> CouponPolicyCreateCommand.GradeOverride.of(
                     o.grade(), o.discountType(), o.discountValue(), o.maxDiscountAmount(), o.minOrderAmount()))
                 .toList();
-        return new CouponPolicyCreateCommand(name, discountType, discountValue, maxDiscountAmount,
+        return CouponPolicyCreateCommand.of(name, discountType, discountValue, maxDiscountAmount,
             minOrderAmount, scopeType, scopeTargetId, overrides, validDays, issuableFrom, issuableUntil,
             maxIssueCount, active);
     }

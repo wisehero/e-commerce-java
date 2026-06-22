@@ -259,6 +259,7 @@ Txn2: 성공(또는 0원 스킵) → markPaid()
 - [v2 #33] `DiscountableLine`은 박제하지 않는다. `OrderLine`엔 brandId를 저장하지 않고, 매칭은 주문 시점에 이미 로드된 `Product`에서 즉석 조립한 입력으로만 한다. 할인 결과(할인액·청구액)는 `Order`에 박혀 영구 보존되므로 재계산이 필요 없다.
 - [v2 #34] scope에 매칭되는 라인이 없으면 `calculateDiscount`가 `BAD_REQUEST`("적용 대상 상품이 없습니다")로 거부 → Txn1 롤백. 조용히 0원 할인으로 통과시키지 않는다.
 - [확정 #21] **0원 결제**: 전액 할인으로 `payableAmount == 0`이면 결제 단계를 건너뛰고 Txn2에서 바로 `PAID`.
+- **의식적 규칙 예외: 사용 Txn의 다중 Aggregate 수정** — §4 발급과 같은 성격이다. Txn1이 `Order`(생성·청구액 확정)와 `IssuedCoupon`(사용 마킹)을 한 트랜잭션에 묶는다(`ddd.md §4` "1 Txn = 1 Aggregate"의 의식적 예외, order Txn1의 SKU+Order와 동형). 주문 청구액 ↔ 쿠폰 사용의 강한 일관성이 필요하고, 외부 결제 호출은 트랜잭션 밖이라 락 점유가 짧다. 쿠폰 사용 처리는 application 프로세스(`OrderCouponApplier`)가 오케스트레이션한다.
 
 ## 6. 취소·복원 흐름
 
@@ -331,6 +332,8 @@ D) return discountRule.calculateDiscount(base)
 | 쿠폰 복원 | `WHERE status='USED' AND used_order_id=:orderId` | 이미 복원됨(멱등, 무동작) |
 
 **DDD 긴장점**: 원자성은 infrastructure의 조건부 UPDATE가 보장하고, 도메인 메서드(`assertIssuable`·`use`·`calculateDiscount`)는 검증·계산·전이 의도를 소유한다. 도메인 모델을 우회하는 UPDATE는 order §6 `AtomicUpdateStockDeducter`와 같은 비용(invariant 우회)을 지며 테스트·문서에 남긴다. 쿠폰 사용 전략은 단일 고정(재고처럼 `lockMode` 노출 안 함). 단일 행·단일 사용이라 조건부 UPDATE 하나로 충분하다.
+
+**`use()`/`restore()`의 위치**: 두 도메인 메서드의 상태 전이(UNUSED↔USED)는 단일 트랜잭션 내 도메인 표현일 뿐 영속 경로가 아니다 — 사용/복원의 실제 DB 반영은 위 조건부 UPDATE(`markUsedIfAvailable`/`restoreByOrderId`)가 도메인 객체를 거치지 않고 직접 수행한다(주문·보상 흐름은 `IssuedCoupon`을 save하지 않는다). 따라서 `use()`는 사실상 "사전 검증 + 단일스레드 표현"이고 동시성 게이트는 UPDATE가 쥔다. 두 경로가 드리프트하지 않도록 UPDATE의 `WHERE` 가드와 도메인 메서드 검증이 같은 규칙임을 통합 테스트로 고정한다(발급 quota는 `CouponIssueConcurrencyIntegrationTest`; 사용/복원 전이도 동형 통합 테스트 대상 — 미작성, §0.2 후속). 향후 정리 방향: `use()`를 상태 전이 없는 `assertUsable(...)`로 좁혀 "죽은 전이"를 없애는 안이 있으나 별도 과제다.
 
 ## 11. 유스케이스 (application)
 

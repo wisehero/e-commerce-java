@@ -81,6 +81,17 @@ class ProductControllerV1Test {
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.hasNext").value(false));
         }
+
+        @Test
+        @DisplayName("page가 정수가 아니면 400 — 타입 불일치도 BAD_REQUEST로 잡고 UseCase 미호출")
+        void should_return400_when_pageNotInteger() throws Exception {
+            mockMvc.perform(get("/api/v1/products").param("page", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.meta.result").value("FAIL"))
+                .andExpect(jsonPath("$.meta.errorCode").value("Bad Request"));
+
+            then(productSearchUseCase).should(never()).search(any(), any(), any(), anyInt(), anyInt());
+        }
     }
 
     @Nested

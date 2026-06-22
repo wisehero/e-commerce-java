@@ -333,7 +333,7 @@ D) return discountRule.calculateDiscount(base)
 
 **DDD 긴장점**: 원자성은 infrastructure의 조건부 UPDATE가 보장하고, 도메인 메서드(`assertIssuable`·`use`·`calculateDiscount`)는 검증·계산·전이 의도를 소유한다. 도메인 모델을 우회하는 UPDATE는 order §6 `AtomicUpdateStockDeducter`와 같은 비용(invariant 우회)을 지며 테스트·문서에 남긴다. 쿠폰 사용 전략은 단일 고정(재고처럼 `lockMode` 노출 안 함). 단일 행·단일 사용이라 조건부 UPDATE 하나로 충분하다.
 
-**`use()`/`restore()`의 위치**: 두 도메인 메서드의 상태 전이(UNUSED↔USED)는 단일 트랜잭션 내 도메인 표현일 뿐 영속 경로가 아니다 — 사용/복원의 실제 DB 반영은 위 조건부 UPDATE(`markUsedIfAvailable`/`restoreByOrderId`)가 도메인 객체를 거치지 않고 직접 수행한다(주문·보상 흐름은 `IssuedCoupon`을 save하지 않는다). 따라서 `use()`는 사실상 "사전 검증 + 단일스레드 표현"이고 동시성 게이트는 UPDATE가 쥔다. 두 경로가 드리프트하지 않도록 UPDATE의 `WHERE` 가드와 도메인 메서드 검증이 같은 규칙임을 통합 테스트로 고정한다(발급 quota는 `CouponIssueConcurrencyIntegrationTest`; 사용/복원 전이도 동형 통합 테스트 대상 — 미작성, §0.2 후속). 향후 정리 방향: `use()`를 상태 전이 없는 `assertUsable(...)`로 좁혀 "죽은 전이"를 없애는 안이 있으나 별도 과제다.
+**`use()`/`restore()`의 위치**: 두 도메인 메서드의 상태 전이(UNUSED↔USED)는 단일 트랜잭션 내 도메인 표현일 뿐 영속 경로가 아니다 — 사용/복원의 실제 DB 반영은 위 조건부 UPDATE(`markUsedIfAvailable`/`restoreByOrderId`)가 도메인 객체를 거치지 않고 직접 수행한다(주문·보상 흐름은 `IssuedCoupon`을 save하지 않는다). 따라서 `use()`는 사실상 "사전 검증 + 단일스레드 표현"이고 동시성 게이트는 UPDATE가 쥔다. 두 경로가 드리프트하지 않도록 UPDATE의 `WHERE` 가드와 도메인 메서드 검증이 같은 규칙임을 통합 테스트로 고정한다(발급 quota는 `CouponIssueConcurrencyIntegrationTest`, 사용/복원 전이는 `IssuedCouponUpdateIntegrationTest`). 향후 정리 방향: `use()`를 상태 전이 없는 `assertUsable(...)`로 좁혀 "죽은 전이"를 없애는 안이 있으나 별도 과제다.
 
 ## 11. 유스케이스 (application)
 

@@ -17,7 +17,7 @@ import org.testcontainers.mysql.MySQLContainer;
 public abstract class IntegrationTestSupport {
 
     static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.0")
-        .withDatabaseName("loopers");
+        .withDatabaseName("commerce");
 
     static {
         MYSQL.start();

@@ -25,7 +25,7 @@
 - 등급 차등: `CouponPolicy`가 기본 규칙 + 등급별 override 맵을 들고, 발급 시 회원 등급으로 단일 규칙을 골라 박제(#36·#38). `IssuedCoupon`·주문 계산 흐름은 v1 그대로 보존.
 - **선행 의존성**: 회원 등급 개념이 member 도메인에 없었다 → `MemberGrade` 최소 정적 enum + `Member.grade` 신설(#37·#39). 자동 산정은 보류. 카테고리 한정은 `domain/category`(계층형) 도입이 선행됐다.
 
-공통 보류(의식적, §15): 스택킹, 쿠폰 사용 멱등성, 부분취소 시 부분복원, Redis 선착순, 인증 강제 적용 / [v2] 다중·교차 대상, 등급 자동 산정, 등급 발급 게이트, 등급별 scope 차등.
+공통 보류(의식적, §15): 스택킹, 쿠폰 사용 멱등성, 부분취소 시 부분복원, Redis 선착순 / [v2] 다중·교차 대상, 등급 자동 산정, 등급 발급 게이트, 등급별 scope 차등.
 - **문서 경계**: 이 스펙은 구조·구현(무엇을·어디서·어떻게)만 다룬다. 비즈니스 당위(왜 이 할인율·왜 이 만료·왜 1인 1매)는 §0.1 원장 `근거(왜)` 열과 별도 정책 문서 소관이며, 본문에서 되풀이하지 않는다.
 
 ### 0.1 결정 원장 [확정] — grill 세션 합의
@@ -255,7 +255,7 @@ Txn2: 성공(또는 0원 스킵) → markPaid()
       실패 → cancel() + 재고 복원 + 쿠폰 복원(§6)
 ```
 
-- 소유자 검증: `issuedCoupon.memberId == command.memberId` 불일치면 거부(단, 주문 `memberId`가 미인증이라 order의 인증 보류 수준에 종속, §15).
+- 소유자 검증: `issuedCoupon.memberId == command.memberId` 불일치면 거부한다. 여기서 `command.memberId`는 interfaces 계층이 인증 principal에서 주입한 회원 ID다.
 - [v2 #33] `DiscountableLine`은 박제하지 않는다. `OrderLine`엔 brandId를 저장하지 않고, 매칭은 주문 시점에 이미 로드된 `Product`에서 즉석 조립한 입력으로만 한다. 할인 결과(할인액·청구액)는 `Order`에 박혀 영구 보존되므로 재계산이 필요 없다.
 - [v2 #34] scope에 매칭되는 라인이 없으면 `calculateDiscount`가 `BAD_REQUEST`("적용 대상 상품이 없습니다")로 거부 → Txn1 롤백. 조용히 0원 할인으로 통과시키지 않는다.
 - [확정 #21] **0원 결제**: 전액 할인으로 `payableAmount == 0`이면 결제 단계를 건너뛰고 Txn2에서 바로 `PAID`.
@@ -340,8 +340,8 @@ D) return discountRule.calculateDiscount(base)
 | UseCase | 입력 | 출력 | 비고 |
 |---|---|---|---|
 | 정책 생성(관리자) | `CouponPolicyCreateCommand`([v2] scope·gradeOverrides 포함) | `CouponPolicyInfo` | Txn. [v2] BRAND/PRODUCT scope면 대상 존재 검증(#31) |
-| 쿠폰 발급(선착순) | `CouponIssueCommand`(policyId, memberId) | `CouponInfo` | §4 발급 Txn. [v2] Member 로드해 grade로 규칙 해소(#36) |
-| 내 쿠폰 목록 | memberId, status?, page, size | `PageResult<CouponInfo>` | readOnly. 만료는 파생 필터 |
+| 쿠폰 발급(선착순) | `CouponIssueCommand`(policyId, memberId) | `CouponInfo` | memberId는 인증 principal에서 주입. §4 발급 Txn. [v2] Member 로드해 grade로 규칙 해소(#36) |
+| 내 쿠폰 목록 | memberId, status?, page, size | `PageResult<CouponInfo>` | memberId는 인증 principal 기준. readOnly. 만료는 파생 필터 |
 | (주문 생성 확장) | `OrderPlaceCommand`(+couponId) | `OrderInfo` | order UseCase에 쿠폰 소비 삽입(§5) |
 
 명칭은 `[추정]`(order 컨벤션 유도). 신규 발급/조회는 두 Repository만, 주문 생성은 기존 `OrderPlaceUseCase`에 `IssuedCouponRepository` 의존을 추가한다. 결제 실패·주문 취소의 재고/쿠폰 복원은 application의 `OrderCompensationHelper`가 묶어 수행한다.
@@ -354,7 +354,7 @@ D) return discountRule.calculateDiscount(base)
 
 ## 12. 5계층 매핑 `[추정: 경로·명칭]`
 
-- **interfaces** (`com.commerce.interfaces.api.coupon`): `CouponControllerV1`(`/api/v1/coupons` 발급, `/api/v1/members/{memberId}/coupons` 내 쿠폰), `CouponPolicyControllerV1`(`/api/v1/coupon-policies`). `ApiResponse<T>` 직반환(프로젝트 컨벤션). [v2] `CouponPolicyCreateRequest`에 scope·gradeOverrides 필드 추가.
+- **interfaces** (`com.commerce.interfaces.api.coupon`): `CouponControllerV1`(`/api/v1/coupons` 발급, `/api/v1/coupons/me` 내 쿠폰), `CouponPolicyControllerV1`(`/api/v1/admin/coupon-policies` 관리). 고객 쿠폰 API의 `memberId`는 요청 body/path/query가 아니라 인증 principal에서 읽는다. `ApiResponse<T>` 직반환(프로젝트 컨벤션). [v2] `CouponPolicyCreateRequest`에 scope·gradeOverrides 필드 추가.
 - **application** (`com.commerce.application.coupon`): UseCase, `*Command`/`*Info`. [v2] `CouponPolicyCreateUseCase`에 `BrandRepository`·`ProductRepository`·`CategoryRepository` 의존 추가(대상 검증), `CouponIssueUseCase`에 `MemberRepository` 의존 추가(등급 조회). `OrderPlaceUseCase`(application.order)에 `CategoryRepository` 의존 추가(CATEGORY 서브트리 해소, #42).
 - **domain** (`com.commerce.domain.coupon`): `CouponPolicy`/`IssuedCoupon`/(`DiscountRule`)/`DiscountType`/`CouponStatus`, `CouponPolicyRepository`·`IssuedCouponRepository`. [v2] `ApplicabilityScope`/`ScopeType`(scope VO), `DiscountableLine`(중립 입력 record) 추가.
 - **infrastructure** (`com.commerce.infrastructure.coupon`): `*JpaEntity`, JpaRepository(조건부 UPDATE 쿼리 포함), `RepositoryImpl`. `DiscountRule`은 `@Embedded` 검토. UNIQUE(policy_id, member_id). [v2] `ApplicabilityScope` `@Embedded`(coupon_policy·issued_coupon 양쪽), `gradeOverrides`는 `@ElementCollection` 보조 테이블(`coupon_policy_grade_override`).
@@ -402,4 +402,3 @@ D) return discountRule.calculateDiscount(base)
 - 부분취소 시 쿠폰 부분 복원(라인 단위 할인 배분 필요). v2 #33(라인 박제 안 함) 결정과 맞물려, 부분취소 도입 시 `OrderLine`에 brand/category 박제를 재검토.
 - 관리자 일괄 발급·프로모 코드·이벤트 자동 발급.
 - 고트래픽 선착순: Redis 원자 카운터(`modules/redis` 첫 사용처, Redis와 DB 정합성 보정비용).
-- 인증·인가 강제 적용(현재 소유자 검증은 `memberId` 비교 의존).

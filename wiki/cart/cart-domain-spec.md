@@ -12,7 +12,7 @@
 
 - 카트는 **DB에 영속**한다. (Redis-TTL 후보를 검토했으나 의식적으로 RDB를 택했다 — §1.)
 - **체크아웃(카트→주문)은 서버 주도 API로 제공한다.** application 계층이 CartLine을 주문 입력으로 변환한다(§7).
-- 보류(의식적): 게스트(비회원) 카트, 인증 강제 적용, 버려진 카트 정리 배치, added_price 스냅샷("가격 변동" 알림), 동시성 `@Version`(§13).
+- 보류(의식적): 게스트(비회원) 카트, 버려진 카트 정리 배치, added_price 스냅샷("가격 변동" 알림), 동시성 `@Version`(§13).
 
 ## 1. 영속화 & Aggregate 구조 — DB(JPA), Order 패턴 미러링
 
@@ -74,7 +74,7 @@
 
 ## 3. 소유자 & 생명주기
 
-- **소유자 = `memberId`.** order가 인증을 보류하고 `memberId` + 존재검증으로 처리한 선례를 따른다. **게스트(비회원) 카트는 보류**(§13).
+- **소유자 = `memberId`.** interfaces 계층은 인증 principal에서 회원 ID를 읽어 application command의 `memberId`에 주입한다. **게스트(비회원) 카트는 보류**(§13).
 - 첫 `addItem` 시 해당 `memberId`가 존재하는 회원인지 **검증**한다(없으면 `NOT_FOUND`). order의 "유령 구매자 차단"(order §8)과 같은 정신 — 유령 카트를 만들지 않는다.
 - **member당 카트 1개**, **첫 `addItem` 때 지연 생성**. 카트가 없는 member의 조회는 404가 아니라 **빈 카트 뷰**(라인 0개, 총액 0)를 반환한다.
 
@@ -145,7 +145,7 @@ cart와 order 도메인 모델은 직접 결합하지 않는다.
 
 ```
 클라: POST /api/v1/carts/checkout
-서버: memberId 기준 Cart 조회
+서버: 인증 memberId 기준 Cart 조회
 서버: CartLine → OrderPlaceCommand.LineCommand 변환
 서버: sourceCartId를 포함해 주문 생성
 서버: 주문이 PAID가 된 경우에만 Cart.clear()
@@ -178,12 +178,13 @@ cart와 order 도메인 모델은 직접 결합하지 않는다.
 ## 10. 5계층 매핑
 
 - **interfaces** (`com.commerce.interfaces.api.cart`): `CartControllerV1`(`/api/v1/carts`), `*Request`/`*Response`(`PageResponse` 불필요 — 카트는 단건).
-  - `GET /api/v1/carts` (memberId) → 조회
-  - `POST /api/v1/carts/items` (memberId, skuId, quantity) → 담기
-  - `PATCH /api/v1/carts/items/{skuId}` (memberId, quantity) → 수량변경
-  - `DELETE /api/v1/carts/items/{skuId}` (memberId) → 라인 제거
-  - `DELETE /api/v1/carts` (memberId) → 비움
-  - memberId는 바디/파라미터로 받고 **인증 강제 적용은 TODO**(order·product admin과 동일).
+  - `GET /api/v1/carts` → 인증 회원 카트 조회
+  - `POST /api/v1/carts/items` (`skuId`, `quantity`) → 인증 회원 카트에 담기
+  - `POST /api/v1/carts/checkout` (`lockMode`, `couponId?`) → 인증 회원 카트 체크아웃
+  - `PATCH /api/v1/carts/items/{skuId}` (`quantity`) → 인증 회원 카트 수량변경
+  - `DELETE /api/v1/carts/items/{skuId}` → 인증 회원 카트 라인 제거
+  - `DELETE /api/v1/carts` → 인증 회원 카트 비움
+  - `memberId`는 요청 body/query/path로 받지 않고 인증 principal에서 가져온다.
 - **application** (`com.commerce.application.cart`): 위 UseCase들, `CartAddItemCommand`/`CartChangeQuantityCommand`, `CartInfo`/`CartLineInfo`(+`status` enum).
 - **domain** (`com.commerce.domain.cart`): `Cart`/`CartLine`, `CartRepository`(인터페이스). 순수 자바, JPA 어노테이션 없음.
 - **infrastructure** (`com.commerce.infrastructure.cart`): `CartJpaEntity`/`CartLineJpaEntity`, `CartJpaRepository`/`CartLineJpaRepository`, `CartRepositoryImpl`(두 테이블 영속화·조립). JPA 연관 어노테이션 없이 ID 참조.
@@ -207,8 +208,7 @@ cart와 order 도메인 모델은 직접 결합하지 않는다.
 ## 13. 보류·확장 지점 (의식적으로 미룸)
 
 - **버려진 카트 정리 배치**: DB는 TTL이 없어 행이 누적된다. `@Scheduled`로 `updated_at` N일 경과 카트 삭제(DB의 TTL 대체) — **별도 배치 이터레이션**. TODO 명시.
-- 게스트(비회원) 카트: 익명 식별자(쿠키/세션) 기반. 현재는 memberId만.
-- 인증 강제 적용: 본인 카트만 접근. 현재 memberId 파라미터 + TODO.
+- 게스트(비회원) 카트: 익명 식별자(쿠키/세션) 기반. 현재는 인증 회원 카트만 지원한다.
 - added_price 스냅샷("담을 때보다 가격 변동" 알림): §2 실시간 원칙과 충돌하므로 보류.
 - 부분 선택 체크아웃: 현재는 전체 카트만 체크아웃한다. 선택 정책이 필요해지면 주문된 라인만 제거하고 라인 출처 스냅샷을 검토한다.
 - 동시성 `@Version`(§11), 위시리스트/저장 목록 분리.

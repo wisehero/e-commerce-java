@@ -84,7 +84,7 @@ Category는 자기 자신을 부모로 참조하는 트리 Aggregate이며, Prod
 
 ## 5. 5계층 매핑
 
-- **interfaces**: `CategoryControllerV1`(`/api/v1/categories`), `CategoryRegisterRequest`/`CategoryUpdateRequest`/`CategoryResponse`(단건)/`CategoryTreeResponse`(중첩 children).
+- **interfaces**: `CategoryControllerV1`(`/api/v1/categories` 공개 조회), `CategoryAdminControllerV1`(`/api/v1/admin/categories` 관리), `CategoryRegisterRequest`/`CategoryUpdateRequest`/`CategoryResponse`(단건)/`CategoryTreeResponse`(중첩 children).
 - **application**: 위 UseCase들, `Category{Register,Update}Command`, `CategoryInfo`/`CategoryTreeInfo`.
 - **domain**: `Category`/`CategoryStatus`, `CategoryRepository`(인터페이스).
 - **infrastructure**: `CategoryJpaEntity`(`categories` 테이블, `uk_categories_parent_name`), `CategoryJpaRepository`, `CategoryRepositoryImpl`.
@@ -95,16 +95,17 @@ Category는 자기 자신을 부모로 참조하는 트리 Aggregate이며, Prod
 |---|---|---|
 | GET | `/api/v1/categories` | 전체 트리(중첩) |
 | GET | `/api/v1/categories/{id}` | 단건 상세 |
-| POST | `/api/v1/categories` | 등록 |
-| PATCH | `/api/v1/categories/{id}` | 이름·정렬 수정 |
-| POST | `/api/v1/categories/{id}/activate` | 활성화 |
-| POST | `/api/v1/categories/{id}/deactivate` | 비활성화 |
-| DELETE | `/api/v1/categories/{id}` | 삭제(자식 있으면 거부) |
+| POST | `/api/v1/admin/categories` | 등록 |
+| PATCH | `/api/v1/admin/categories/{id}` | 이름·정렬 수정 |
+| POST | `/api/v1/admin/categories/{id}/activate` | 활성화 |
+| POST | `/api/v1/admin/categories/{id}/deactivate` | 비활성화 |
+| DELETE | `/api/v1/admin/categories/{id}` | 삭제(자식 있으면 거부) |
 
 ## 6. ErrorType · 권한
 
 - **`ErrorType` 재사용**(새 타입 남발 금지): 형제 이름 중복 `CONFLICT`, 부모 없음·리프 아님·깊이 초과 `BAD_REQUEST`, 단건/삭제 대상 없음 `NOT_FOUND`, 자식 있는 삭제 `CONFLICT`.
-- 카테고리 등록·수정·삭제는 본질적으로 ADMIN 행위지만 **강제 적용 보류** — 인증 도메인을 만들 때 일괄 적용(brand·product 스펙과 동일 기조).
+- 카테고리 트리/상세 조회는 고객 카탈로그 탐색 목적이므로 공개 API로 유지한다.
+- 카테고리 등록·수정·상태변경·삭제는 `/api/v1/admin/**` 관리 API로 분리하고 `ADMIN` 권한만 허용한다.
 
 ## 7. 인프라 처리 (자기 참조 트리)
 

@@ -111,7 +111,7 @@ Brand는 Product와 ID 참조로 연결되며, 일부 product 결정(brandId)을
 
 ## 6. 5계층 매핑
 
-- **interfaces**: `BrandControllerV1`(`/api/v1/brands`), `*Request`/`*Response`.
+- **interfaces**: `BrandControllerV1`(`/api/v1/brands` 공개 조회), `BrandAdminControllerV1`(`/api/v1/admin/brands` 관리), `*Request`/`*Response`.
 - **application**: 위 UseCase들, `*Command`/`*Info`.
 - **domain**: `Brand`/`BrandStatus`, `BrandRepository`(인터페이스).
 - **infrastructure**: `BrandJpaEntity`, `BrandJpaRepository`, `BrandRepositoryImpl`. JPA 연관 어노테이션 없이 ID 참조. **product 목록/검색의 brand 조인은 product infra 쿼리에서** brand 테이블을 참조해 처리(브랜드 도메인 타입을 끌어오지 않음).
@@ -119,7 +119,8 @@ Brand는 Product와 ID 참조로 연결되며, 일부 product 결정(brandId)을
 ## 7. ErrorType · 권한
 
 - **`ErrorType` 재사용**(새 타입 남발 금지, product-spec §7 기조): 이름 중복 `CONFLICT`, 상품 등록 시 브랜드 없음 `BAD_REQUEST`, 고객 조회/상세 게이트 `NOT_FOUND`.
-- 브랜드 등록·수정·상태변경은 본질적으로 ADMIN 행위지만 **강제 적용 보류** — 의도는 TODO로 표시하고, 실제 권한 검증은 인증 도메인을 만들 때 일괄 적용(product-spec §8과 동일).
+- 브랜드 단건 조회는 고객 카탈로그 탐색 목적이므로 공개 API로 유지한다.
+- 브랜드 등록·수정·상태변경은 `/api/v1/admin/**` 관리 API로 분리하고 `ADMIN` 권한만 허용한다.
 
 ## 8. product 도메인 변경 (brandId 필수화 영향)
 

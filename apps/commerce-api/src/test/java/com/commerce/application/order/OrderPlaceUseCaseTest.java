@@ -23,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.commerce.application.purchase.PurchasableItemResolver;
 import com.commerce.domain.brand.Brand;
@@ -97,7 +98,7 @@ class OrderPlaceUseCaseTest {
             Map.of("optimistic", stockDeducter));
         OrderCouponApplier orderCouponApplier = new OrderCouponApplier(issuedCouponRepository, categoryRepository);
         useCase = new OrderPlaceUseCase(memberRepository, orderRepository, orderLinePreparer, orderCouponApplier,
-            orderCompensationHelper, paymentGateway, transactionManager);
+            orderCompensationHelper, paymentGateway, new TransactionTemplate(transactionManager));
     }
 
     private OrderPlaceCommand command(String lockMode) {

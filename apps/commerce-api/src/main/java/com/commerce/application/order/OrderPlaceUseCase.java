@@ -3,7 +3,6 @@ package com.commerce.application.order;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.commerce.domain.coupon.DiscountableLine;
@@ -17,6 +16,8 @@ import com.commerce.domain.product.StockDeducter;
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
 
+import lombok.RequiredArgsConstructor;
+
 /**
  * 주문 생성 유스케이스. 주문 생성 흐름을 orchestration 한다.
  *
@@ -28,6 +29,7 @@ import com.commerce.support.error.ErrorType;
  * 결제 실패 보상은 {@link OrderCompensationHelper}에 위임한다.
  */
 @Service
+@RequiredArgsConstructor
 public class OrderPlaceUseCase {
 
     private final MemberRepository memberRepository;
@@ -37,19 +39,6 @@ public class OrderPlaceUseCase {
     private final OrderCompensationHelper orderCompensationHelper;
     private final PaymentGateway paymentGateway;
     private final TransactionTemplate transactionTemplate;
-
-    public OrderPlaceUseCase(MemberRepository memberRepository, OrderRepository orderRepository,
-        OrderLinePreparer orderLinePreparer, OrderCouponApplier orderCouponApplier,
-        OrderCompensationHelper orderCompensationHelper, PaymentGateway paymentGateway,
-        PlatformTransactionManager transactionManager) {
-        this.memberRepository = memberRepository;
-        this.orderRepository = orderRepository;
-        this.orderLinePreparer = orderLinePreparer;
-        this.orderCouponApplier = orderCouponApplier;
-        this.orderCompensationHelper = orderCompensationHelper;
-        this.paymentGateway = paymentGateway;
-        this.transactionTemplate = new TransactionTemplate(transactionManager);
-    }
 
     public OrderInfo place(OrderPlaceCommand command) {
         // 전략 선택은 트랜잭션을 열기 전에 끝낸다(잘못된 lockMode면 트랜잭션 없이 즉시 거부).

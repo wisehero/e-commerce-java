@@ -63,6 +63,7 @@ class OrderPlaceUseCaseTest {
     private static final Long PRODUCT_ID = 100L;
     private static final Long ORDER_ID = 1000L;
     private static final Long COUPON_ID = 50L;
+    private static final Long SOURCE_CART_ID = 200L;
 
     @Mock
     private MemberRepository memberRepository;
@@ -141,7 +142,8 @@ class OrderPlaceUseCaseTest {
         given(orderRepository.save(any(Order.class))).willAnswer(inv -> {
             Order o = inv.getArgument(0);
             return Order.reconstitute(ORDER_ID, o.getMemberId(), o.getStatus(), o.getOrderLines(),
-                o.getTotalAmount(), o.getDiscountAmount(), o.getPayableAmount(), o.getUsedCouponId());
+                o.getTotalAmount(), o.getDiscountAmount(), o.getPayableAmount(), o.getUsedCouponId(),
+                o.getSourceCartId());
         });
         given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(pendingOrder()));
     }
@@ -149,6 +151,11 @@ class OrderPlaceUseCaseTest {
     private OrderPlaceCommand couponCommand(String lockMode) {
         return new OrderPlaceCommand(MEMBER_ID, List.of(new OrderPlaceCommand.LineCommand(SKU_ID, 2)),
             lockMode, COUPON_ID);
+    }
+
+    private OrderPlaceCommand cartSourceCommand(String lockMode) {
+        return new OrderPlaceCommand(MEMBER_ID, List.of(new OrderPlaceCommand.LineCommand(SKU_ID, 2)),
+            lockMode, null, SOURCE_CART_ID);
     }
 
     @Nested
@@ -195,6 +202,25 @@ class OrderPlaceUseCaseTest {
             assertThat(info.usedCouponId()).isEqualTo(COUPON_ID);
             then(paymentGateway).should().pay(ORDER_ID, new Money(11000));
             then(issuedCouponRepository).should().markUsedIfAvailable(eq(COUPON_ID), eq(MEMBER_ID), any(), eq(ORDER_ID));
+        }
+
+        @Test
+        @DisplayName("카트 기반 주문이면 sourceCartId를 주문에 남긴다")
+        void should_keepSourceCartId_when_cartSourceCommand() {
+            // given
+            givenValidCatalog();
+            given(paymentGateway.pay(eq(ORDER_ID), any())).willReturn(PaymentResult.success());
+            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(
+                Order.reconstitute(ORDER_ID, MEMBER_ID, OrderStatus.PAYMENT_PENDING,
+                    pendingOrder().getOrderLines(), new Money(16000), Money.ZERO, new Money(16000), null,
+                    SOURCE_CART_ID)));
+
+            // when
+            OrderInfo info = useCase.place(cartSourceCommand("optimistic"));
+
+            // then
+            assertThat(info.status()).isEqualTo("PAID");
+            assertThat(info.sourceCartId()).isEqualTo(SOURCE_CART_ID);
         }
     }
 

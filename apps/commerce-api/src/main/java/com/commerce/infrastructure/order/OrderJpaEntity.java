@@ -49,25 +49,30 @@ public class OrderJpaEntity extends BaseJpaEntity {
     @Column(name = "used_coupon_id")
     private Long usedCouponId;
 
+    @Column(name = "source_cart_id")
+    private Long sourceCartId;
+
     private OrderJpaEntity(Long memberId, OrderStatus status, long totalAmount, long discountAmount,
-        long payableAmount, Long usedCouponId) {
+        long payableAmount, Long usedCouponId, Long sourceCartId) {
         this.memberId = memberId;
         this.status = status;
         this.totalAmount = totalAmount;
         this.discountAmount = discountAmount;
         this.payableAmount = payableAmount;
         this.usedCouponId = usedCouponId;
+        this.sourceCartId = sourceCartId;
     }
 
     public static OrderJpaEntity fromDomain(Order order) {
         return new OrderJpaEntity(order.getMemberId(), order.getStatus(), order.getTotalAmount().amount(),
-            order.getDiscountAmount().amount(), order.getPayableAmount().amount(), order.getUsedCouponId());
+            order.getDiscountAmount().amount(), order.getPayableAmount().amount(), order.getUsedCouponId(),
+            order.getSourceCartId());
     }
 
     /** 라인은 별도 테이블에서 로드해 넘겨준다. */
     public Order toDomain(List<OrderLine> orderLines) {
         return Order.reconstitute(getId(), memberId, status, orderLines, new Money(totalAmount),
-            new Money(discountAmount), new Money(payableAmount), usedCouponId);
+            new Money(discountAmount), new Money(payableAmount), usedCouponId, sourceCartId);
     }
 
     /** 상태 전이(markPaid/cancel)만 반영. memberId·총액·라인은 불변이라 건드리지 않는다. */

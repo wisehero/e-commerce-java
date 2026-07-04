@@ -25,9 +25,10 @@ public class Order {
     private Money discountAmount;
     private Money payableAmount;
     private Long usedCouponId;
+    private Long sourceCartId;
 
     private Order(Long id, Long memberId, OrderStatus status, List<OrderLine> orderLines, Money totalAmount,
-        Money discountAmount, Money payableAmount, Long usedCouponId) {
+        Money discountAmount, Money payableAmount, Long usedCouponId, Long sourceCartId) {
         this.id = id;
         this.memberId = memberId;
         this.status = status;
@@ -36,6 +37,7 @@ public class Order {
         this.discountAmount = discountAmount;
         this.payableAmount = payableAmount;
         this.usedCouponId = usedCouponId;
+        this.sourceCartId = sourceCartId;
         validate();
     }
 
@@ -45,6 +47,11 @@ public class Order {
     }
 
     public static Order place(Long memberId, List<OrderLine> orderLines, Money discountAmount, Long usedCouponId) {
+        return place(memberId, orderLines, discountAmount, usedCouponId, null);
+    }
+
+    public static Order place(Long memberId, List<OrderLine> orderLines, Money discountAmount, Long usedCouponId,
+        Long sourceCartId) {
         Money totalAmount = totalAmountOf(orderLines);
         Money normalizedDiscount = discountAmount == null ? Money.ZERO : discountAmount;
         return new Order(null,
@@ -54,7 +61,8 @@ public class Order {
             totalAmount,
             normalizedDiscount,
             totalAmount.minus(normalizedDiscount),
-            usedCouponId);
+            usedCouponId,
+            sourceCartId);
     }
 
     /** 영속 복원: 쿠폰 도입 전 주문은 주문 총액과 청구액이 같다. */
@@ -72,6 +80,13 @@ public class Order {
 
     public static Order reconstitute(Long id, Long memberId, OrderStatus status,
         List<OrderLine> orderLines, Money totalAmount, Money discountAmount, Money payableAmount, Long usedCouponId) {
+        return reconstitute(id, memberId, status, orderLines, totalAmount, discountAmount, payableAmount, usedCouponId,
+            null);
+    }
+
+    public static Order reconstitute(Long id, Long memberId, OrderStatus status,
+        List<OrderLine> orderLines, Money totalAmount, Money discountAmount, Money payableAmount, Long usedCouponId,
+        Long sourceCartId) {
         return new Order(id,
             memberId,
             status,
@@ -79,7 +94,8 @@ public class Order {
             totalAmount,
             discountAmount,
             payableAmount,
-            usedCouponId);
+            usedCouponId,
+            sourceCartId);
     }
 
     private void validate() {

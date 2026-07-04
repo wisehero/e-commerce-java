@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.commerce.application.cart.CartAddItemUseCase;
 import com.commerce.application.cart.CartChangeQuantityUseCase;
+import com.commerce.application.cart.CartCheckoutUseCase;
 import com.commerce.application.cart.CartClearUseCase;
 import com.commerce.application.cart.CartRemoveItemUseCase;
 import com.commerce.application.cart.CartViewUseCase;
@@ -36,6 +37,7 @@ public class CartControllerV1 {
     private final CartChangeQuantityUseCase cartChangeQuantityUseCase;
     private final CartRemoveItemUseCase cartRemoveItemUseCase;
     private final CartClearUseCase cartClearUseCase;
+    private final CartCheckoutUseCase cartCheckoutUseCase;
 
     @Operation(summary = "장바구니 조회")
     @GetMapping
@@ -47,6 +49,12 @@ public class CartControllerV1 {
     @PostMapping("/items")
     public ApiResponse<CartResponse> addItem(@Valid @RequestBody CartAddItemRequest request) {
         return ApiResponse.success(CartResponse.from(cartAddItemUseCase.addItem(request.toCommand())));
+    }
+
+    @Operation(summary = "장바구니 체크아웃")
+    @PostMapping("/checkout")
+    public ApiResponse<CartCheckoutResponse> checkout(@Valid @RequestBody CartCheckoutRequest request) {
+        return ApiResponse.success(CartCheckoutResponse.from(cartCheckoutUseCase.checkout(request.toCommand())));
     }
 
     @Operation(summary = "장바구니 상품 수량 변경")

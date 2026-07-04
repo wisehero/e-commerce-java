@@ -57,6 +57,11 @@ class OrderPersistenceIntegrationTest extends IntegrationTestSupport {
         return Order.place(memberId, List.of(line1, line2));
     }
 
+    private Order cartSourceOrder(Long memberId, Long sourceCartId) {
+        OrderLine line = OrderLine.create(100L, 10L, "맨투맨", "색상:블랙", new Money(8000), 2);
+        return Order.place(memberId, List.of(line), Money.ZERO, null, sourceCartId);
+    }
+
     @Test
     @DisplayName("주문을 두 테이블에 저장하고 라인까지 다시 조립한다")
     void should_persistAndReassemble_when_save() {
@@ -72,6 +77,17 @@ class OrderPersistenceIntegrationTest extends IntegrationTestSupport {
         assertThat(found.getTotalAmount()).isEqualTo(new Money(46000));   // 라인 합
         assertThat(found.getOrderLines()).hasSize(2);
         assertThat(found.getOrderLines()).allSatisfy(line -> assertThat(line.getId()).isNotNull());
+    }
+
+    @Test
+    @DisplayName("카트 기반 주문의 sourceCartId를 저장하고 복원한다")
+    void should_persistSourceCartId_when_cartCheckoutOrder() {
+        // when
+        Order saved = orderRepository.save(cartSourceOrder(1L, 100L));
+
+        // then
+        Order found = orderRepository.findById(saved.getId()).orElseThrow();
+        assertThat(found.getSourceCartId()).isEqualTo(100L);
     }
 
     @Test

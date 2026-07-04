@@ -1,6 +1,6 @@
 # 장바구니(Cart) 도메인 스펙 v1
 
-작성: 2026-06-13 · 상태: 구현 완료(이번 이터레이션 범위)
+작성: 2026-06-13 · 상태: 구현 완료
 
 회원·상품·주문 다음으로 만드는 도메인. 본 문서는 grill 세션에서 결정한 설계 합의를 기록한다.
 이 도메인은 [`order` 스펙](../order/order-domain-spec.md)이 §0·§13에서 통째로 미뤄둔 **"장바구니→주문"** 의 카트 쪽 절반을 닫는다.
@@ -11,7 +11,7 @@
 이번 이터레이션: **카트 담기·수량변경·라인제거·비우기 + 실시간 조회(상태 플래그 포함)**.
 
 - 카트는 **DB에 영속**한다. (Redis-TTL 후보를 검토했으나 의식적으로 RDB를 택했다 — §1.)
-- **체크아웃(카트→주문)은 백엔드에서 결합하지 않는다.** 클라이언트가 기존 `POST /orders`를 재사용한다(§7).
+- **체크아웃(카트→주문)은 서버 주도 API로 제공한다.** application 계층이 CartLine을 주문 입력으로 변환한다(§7).
 - 보류(의식적): 게스트(비회원) 카트, 인증 강제 적용, 버려진 카트 정리 배치, added_price 스냅샷("가격 변동" 알림), 동시성 `@Version`(§13).
 
 ## 1. 영속화 & Aggregate 구조 — DB(JPA), Order 패턴 미러링
@@ -138,20 +138,23 @@
 - 가격은 항상 **현재가**를 보여주므로 "가격 변동" 별도 플래그가 불필요하다(그건 added_price 스냅샷이 필요해 §2 원칙과 충돌 — §13 보류).
 - **`status`는 application(`CartLineInfo`)이 파생**한다. Cart 도메인은 skuId+qty만 알고 순수하게 유지(다른 Aggregate 상태를 모름). 단, SKU 자체의 표현/판단인 옵션 요약과 재고 충분성은 `Sku.optionSummary()`·`Sku.hasEnoughStock(quantity)`를 사용한다.
 
-## 7. 체크아웃(카트→주문) — 백엔드 무결합
+## 7. 체크아웃(카트→주문) — application 오케스트레이션
 
-cart와 order를 **백엔드에서 결합하지 않는다.** 클라이언트가 오케스트레이션한다.
+cart와 order 도메인 모델은 직접 결합하지 않는다.
+대신 서버 주도 체크아웃 API에서 application 계층이 오케스트레이션한다.
 
 ```
-클라: GET /api/v1/carts          → 보강된 카트 조회·선택
-클라: POST /api/v1/orders {lines} → 기존 주문 API 재사용(변경 없음)
-클라: DELETE 라인 / 카트 clear     → 주문 성공 후 호출
+클라: POST /api/v1/carts/checkout
+서버: memberId 기준 Cart 조회
+서버: CartLine → OrderPlaceCommand.LineCommand 변환
+서버: sourceCartId를 포함해 주문 생성
+서버: 주문이 PAID가 된 경우에만 Cart.clear()
 ```
 
-- **cart ↔ order 백엔드 결합 = 0.** 주문 도메인은 카트를 영원히 모른다. 추가 백엔드 코드가 거의 없다(이미 있는 조회·`clear`·라인제거로 충분).
-- `CartCheckoutUseCase`가 `OrderPlaceUseCase`를 호출하는 **UseCase→UseCase 결합**(이 코드베이스에 무선례)을 의식적으로 피한다.
-- 트레이드오프: "주문 성공 후 카트 비우기"가 **클라이언트 책임**이 된다(인증 없는 현 단계엔 허용, 인증 도입 시 단일 체크아웃 엔드포인트로 강화 가능 — §13).
-- 후속 결정: 카트 정리 보장과 주문 출처 추적이 요구사항이 되면 **서버 주도 체크아웃 API**를 도입한다. 상세 결정은 [`02-cart-checkout-decision.md`](./02-cart-checkout-decision.md)를 따른다.
+- 주문 도메인은 카트 객체를 모른다. 주문에는 추적용 `sourceCartId`만 저장한다.
+- 카트가 없으면 `NOT_FOUND`, 비어 있으면 `BAD_REQUEST`로 거부한다.
+- 결제 실패 또는 주문 생성 실패 시 카트는 유지한다.
+- 전체 체크아웃만 지원한다. 부분 체크아웃은 §13 확장 지점으로 남긴다.
 
 ## 8. 금액 모델
 
@@ -166,6 +169,7 @@ cart와 order를 **백엔드에서 결합하지 않는다.** 클라이언트가 
 | 카트 수량 변경 | `CartChangeQuantityCommand`(memberId, skuId, quantity) | `CartInfo` | 절대값 변경 + 재고 검증 |
 | 카트 라인 제거 | (memberId, skuId) | `CartInfo` | |
 | 카트 비우기 | memberId | — | `clear()` |
+| 카트 체크아웃 | `CartCheckoutCommand`(memberId, lockMode, couponId?) | `OrderInfo` | 전체 카트를 주문으로 전환, `PAID` 시 카트 비움 |
 | 카트 조회 | memberId | `CartInfo` | readOnly, 실시간 보강(§6), 배치 조회 |
 
 - 담기/수량변경/조회 의존: `CartRepository`(쓰기/읽기) + `SkuRepository`(존재·재고·가격) + `ProductRepository`(`ON_SALE` 판단·상품명) + `BrandRepository`(`ACTIVE` 판단) + (담기 시) `MemberRepository`(존재검증).
@@ -206,5 +210,5 @@ cart와 order를 **백엔드에서 결합하지 않는다.** 클라이언트가 
 - 게스트(비회원) 카트: 익명 식별자(쿠키/세션) 기반. 현재는 memberId만.
 - 인증 강제 적용: 본인 카트만 접근. 현재 memberId 파라미터 + TODO.
 - added_price 스냅샷("담을 때보다 가격 변동" 알림): §2 실시간 원칙과 충돌하므로 보류.
-- 단일 체크아웃 엔드포인트(`CartCheckoutUseCase`): 카트 정리 보장과 주문 출처 추적이 필요하면 서버 주도 체크아웃 API로 도입한다(§7, [`02-cart-checkout-decision.md`](./02-cart-checkout-decision.md)).
-- 동시성 `@Version`(§11), 부분 선택 체크아웃(라인 선택), 위시리스트/저장 목록 분리.
+- 부분 선택 체크아웃: 현재는 전체 카트만 체크아웃한다. 선택 정책이 필요해지면 주문된 라인만 제거하고 라인 출처 스냅샷을 검토한다.
+- 동시성 `@Version`(§11), 위시리스트/저장 목록 분리.

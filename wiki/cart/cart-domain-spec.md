@@ -3,7 +3,7 @@
 작성: 2026-06-13 · 상태: 구현 완료
 
 회원·상품·주문 다음으로 만드는 도메인. 본 문서는 grill 세션에서 결정한 설계 합의를 기록한다.
-이 도메인은 [`order` 스펙](../order/order-domain-spec.md)이 §0·§13에서 통째로 미뤄둔 **"장바구니→주문"** 의 카트 쪽 절반을 닫는다.
+이 도메인은 [`order` 스펙](../order/order-domain-spec.md)이 최초 범위에서 미뤄둔 **"장바구니→주문"** 의 카트 쪽 절반을 닫는다.
 주문 스펙이 §11에서 보류한 **"동일 SKU 중복 라인 — 병합할지 거부할지"** 도 여기서 닫는다(§5).
 
 ## 0. 범위
@@ -27,7 +27,7 @@
 
 ### 영속화 — `@OneToMany` 없이 두 테이블에 걸치기
 
-프로젝트 규칙상 JPA 연관 어노테이션이 전면 금지(`ddd.md §5`)다. order가 택한 방식(고유 id 자식 엔티티 + 별도 테이블)을 그대로 따른다.
+프로젝트 규칙상 JPA 엔티티 연관 어노테이션이 전면 금지(`ddd.md §5`)다. order가 택한 방식(고유 id 자식 엔티티 + 별도 테이블)을 그대로 따른다.
 
 - Cart Aggregate가 **`carts` + `cart_lines` 두 테이블에 걸친다.**
 - `CartLineJpaEntity`는 고유 `id` + `cart_id`(`Long`, **ID 참조** — 연관 어노테이션 없음)를 가진다.
@@ -74,7 +74,7 @@
 
 ## 3. 소유자 & 생명주기
 
-- **소유자 = `memberId`.** interfaces 계층은 인증 principal에서 회원 ID를 읽어 application command의 `memberId`에 주입한다. **게스트(비회원) 카트는 보류**(§13).
+- **소유자 = `memberId`.** interfaces 계층은 인증 principal에서 회원 ID를 읽어 application command의 `memberId`에 주입한다. **게스트(비회원) 카트는 보류**(§13)라서 비인증 사용자의 카트 담기 요청은 인증 경계에서 거부되고, 로그인 시 게스트 카트를 회원 카트로 병합하는 흐름도 없다.
 - 첫 `addItem` 시 해당 `memberId`가 존재하는 회원인지 **검증**한다(없으면 `NOT_FOUND`). order의 "유령 구매자 차단"(order §8)과 같은 정신 — 유령 카트를 만들지 않는다.
 - **member당 카트 1개**, **첫 `addItem` 때 지연 생성**. 카트가 없는 member의 조회는 404가 아니라 **빈 카트 뷰**(라인 0개, 총액 0)를 반환한다.
 
@@ -100,10 +100,10 @@
 |---|---|---|
 | `addItem(skuId, qty)` | 같은 SKU가 이미 있으면 **수량 합산(병합)**, 없으면 새 라인 | `qty ≥ 1`. 합산 결과를 그때 재고와 검증, 초과면 거부 |
 | `changeQuantity(skuId, qty)` | 해당 라인 수량을 **절대값으로** 변경 | `qty ≥ 1`. `0`은 `BAD_REQUEST`(제거는 `removeItem`) |
-| `removeItem(skuId)` | 라인 제거 | 없는 skuId면 무시 또는 `NOT_FOUND`(구현 시 택1) |
+| `removeItem(skuId)` | 라인 제거 | 없는 skuId면 멱등 no-op |
 | `clear()` | 전체 비움(주문 완료 후 등) | — |
 
-- 카트당 **최대 고유 라인 수 상한**(예: 50)을 둬 Aggregate 비대를 막는다. 초과 시 `BAD_REQUEST`.
+- 카트당 **최대 고유 라인 수 상한 50개**를 둬 Aggregate 비대를 막는다. 초과 시 `BAD_REQUEST`.
 
 ### 동일 SKU 병합의 근거 (order §11이 보류한 결정)
 
@@ -118,10 +118,10 @@
 `CartViewUseCase`가 조립한다(readOnly).
 
 1. `CartRepository`로 Cart 로드.
-2. 라인들의 `skuId`로 `Sku`/`Product`/`Brand`를 **배치 조회**(`findAllByIds`)해 현재 정보를 모은다.
+2. 라인들의 `skuId`로 `Sku`/`Product`/`Brand`를 **배치 조회**(`findByIds`)해 현재 정보를 모은다.
 3. 라인별로 보강 + 상태 판정해 `CartLineInfo`로 조립, `CartInfo`로 묶는다.
 
-- **N+1 회피 필수**: 라인별 단건 조회 금지, 반드시 배치(`findAllByIds`). 이 프로젝트는 performance-profiler 스킬을 둘 만큼 N+1에 민감하다.
+- **N+1 회피 필수**: 라인별 단건 조회 금지, 반드시 배치(`findByIds`)로 조립한다.
 - 조립·다중 Aggregate 읽기는 **application이 오케스트레이션**한다. domain·infra는 다른 Aggregate를 끌어오지 않는다(`ddd.md §5`, order §9와 동일).
 
 ### `CartLineInfo` (application 파생)
@@ -158,7 +158,7 @@ cart와 order 도메인 모델은 직접 결합하지 않는다.
 
 ## 8. 금액 모델
 
-- 라인 소계·카트 총액은 `Money`(공유 VO, order §7이 추가하는 `plus`/`multiply`/`ZERO`)로 계산한다.
+- 라인 소계·카트 총액은 조회 조립 시점에 SKU의 현재 `salePrice.amount()`를 읽어 `long` 응답 금액으로 파생한다(`lineSubtotal = salePrice × quantity`, `cartTotal = 구매 가능 라인 소계 합`).
 - **총액을 저장하지 않는다** — 카트는 실시간이라 조회 시 현재가로 매번 파생한다. 주문이 `total_amount`를 영속화한 것(과거 청구 사실)과 의식적으로 대비된다. `cart_lines`엔 가격 컬럼이 없다.
 
 ## 9. 유스케이스 (application, `@Transactional`)
@@ -172,8 +172,8 @@ cart와 order 도메인 모델은 직접 결합하지 않는다.
 | 카트 체크아웃 | `CartCheckoutCommand`(memberId, lockMode, couponId?) | `OrderInfo` | 전체 카트를 주문으로 전환, `PAID` 시 카트 비움 |
 | 카트 조회 | memberId | `CartInfo` | readOnly, 실시간 보강(§6), 배치 조회 |
 
-- 담기/수량변경/조회 의존: `CartRepository`(쓰기/읽기) + `SkuRepository`(존재·재고·가격) + `ProductRepository`(`ON_SALE` 판단·상품명) + `BrandRepository`(`ACTIVE` 판단) + (담기 시) `MemberRepository`(존재검증).
-- 담기·수량변경은 단건 SKU라 단건 조회로 충분. **조회만 배치(`findAllByIds`)** 가 필요.
+- 담기/수량변경 UseCase 직접 의존: `CartRepository` + `PurchasableItemResolver` + `CartInfoAssembler`(+ 담기 시 `MemberRepository`). SKU·상품·브랜드 조회와 구매 가능성 검증은 `PurchasableItemResolver`가 맡아 주문과 같은 기준을 공유한다.
+- 조회 보강은 `CartInfoAssembler`가 `SkuRepository.findByIds`, `ProductRepository.findByIds`, `BrandRepository.findByIds` 계열 배치 조회로 수행한다.
 
 ## 10. 5계층 매핑
 
@@ -191,9 +191,9 @@ cart와 order 도메인 모델은 직접 결합하지 않는다.
 
 ## 11. 구현 시 주의
 
-- **`ErrorType` 신규 없음**: `NOT_FOUND`(member/sku/product 없음, 빈 카트 조회는 404 아님에 주의), `BAD_REQUEST`(재고 부족·`qty<1`·`changeQuantity(0)`·라인수 상한 초과·구매 불가 상태), `CONFLICT`(필요 시). product §7·order §12 가이드 따름.
-- `CartRepository`: `findByMemberId(Long) → Optional<Cart>`, `save(Cart)`(두 테이블), `deleteByMemberId`(또는 `clear`는 Cart 비워 save).
-- `SkuRepository`에 `findByIds`, `ProductRepository`에 `findByIds`, `BrandRepository`에 `findByIds`(조회 배치용) 필요. 담기 검증엔 단건 `findById` 재사용.
+- **`ErrorType` 신규 없음**: `NOT_FOUND`(member/sku/product 없음, 변경·체크아웃 대상 카트 없음), `BAD_REQUEST`(재고 부족·`qty<1`·`changeQuantity(0)`·라인수 상한 초과·구매 불가 상태). product §7·order §12 가이드 따름.
+- `CartRepository`: `findByMemberId(Long) → Optional<Cart>`, `save(Cart)`(두 테이블). 카트 비우기는 `Cart.clear()` 후 `save`로 반영한다.
+- 조회 보강은 `CartInfoAssembler`가 `SkuRepository.findByIds`, `ProductRepository.findByIds`, `BrandRepository.findByIds`를 사용한다. 담기·수량변경의 단건 구매 가능성 검증은 `PurchasableItemResolver`가 각 Repository의 `findById`로 수행한다.
 - **동시성 `@Version` 안 둠**: 카트는 단일 소유자(memberId)라 경합이 거의 없다. 같은 유저의 동시 쓰기(여러 탭)가 문제되면 그때 추가.
 - `Cart.create`(빈 카트)/`reconstitute` 분리. status 파생은 application에서(§6), 도메인에 넣지 않는다.
 
@@ -201,14 +201,14 @@ cart와 order 도메인 모델은 직접 결합하지 않는다.
 
 - domain 단위테스트: `addItem` 병합(수량 합산), `changeQuantity` 절대값·`qty<1` 거부, `removeItem`, `clear`, 라인수 상한.
 - application 테스트: 담기 검증(미존재 SKU·비-`ON_SALE`·재고부족 거부), 지연 생성, 조회 보강 + `status` 판정(`PURCHASABLE`/`OUT_OF_STOCK`/`UNAVAILABLE`), `cartTotal` = 구매가능 라인만 합산.
-- N+1 검증: 라인 N개 조회 시 Sku/Product 쿼리가 라인 수에 비례하지 않음(배치).
-- `@WebMvcTest`: 5개 엔드포인트, 에러 응답(`$.meta.result/errorCode/message`), 빈 카트 200 응답.
+- N+1 회피 검증: `CartInfoAssemblerTest`에서 라인 여러 개 조회 시 `SkuRepository`/`ProductRepository`/`BrandRepository`를 라인별 단건 호출하지 않고 `findByIds` 배치 호출로 조립함을 고정한다. 실제 SQL 쿼리 카운터 기반 통합 검증은 아직 없다.
+- `@WebMvcTest`: 6개 엔드포인트, 에러 응답(`$.meta.result/errorCode/message`), 빈 카트 200 응답.
 - ArchUnit `LayerDependencyTest`(cart도 동일 규칙) · Spotless 그린.
 
 ## 13. 보류·확장 지점 (의식적으로 미룸)
 
 - **버려진 카트 정리 배치**: DB는 TTL이 없어 행이 누적된다. `@Scheduled`로 `updated_at` N일 경과 카트 삭제(DB의 TTL 대체) — **별도 배치 이터레이션**. TODO 명시.
-- 게스트(비회원) 카트: 익명 식별자(쿠키/세션) 기반. 현재는 인증 회원 카트만 지원한다.
+- 게스트(비회원) 카트: 익명 식별자(쿠키/세션) 기반. 현재는 인증 회원 카트만 지원하며, 비회원 카트 저장·로그인 후 회원 카트 병합은 구현되어 있지 않다.
 - added_price 스냅샷("담을 때보다 가격 변동" 알림): §2 실시간 원칙과 충돌하므로 보류.
 - 부분 선택 체크아웃: 현재는 전체 카트만 체크아웃한다. 선택 정책이 필요해지면 주문된 라인만 제거하고 라인 출처 스냅샷을 검토한다.
 - 동시성 `@Version`(§11), 위시리스트/저장 목록 분리.

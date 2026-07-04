@@ -6,11 +6,12 @@
 
 ## 1. 배경
 
-현재 회원 도메인은 회원가입, 비밀번호 해시, 회원 권한의 기본 의미를 제공한다.
-다만 로그인, 로그아웃, 자동로그인, 회원 탈퇴·정지 상태, 인증된 사용자 기준의 API 접근 제어는 아직 구현되어 있지 않다.
+현재 회원 도메인은 회원가입, 비밀번호 해시, 회원 권한과 회원 등급의 기본 의미를 제공한다.
+현재 코드에는 회원 등급(`BRONZE`, `SILVER`, `GOLD`, `VIP`), 회원 상태(`ACTIVE`, `LOCKED`, `SUSPENDED`, `WITHDRAWN`), 로그인 실패 횟수, 인증 버전, 기본 `SecurityFilterChain`, 공개/보호/관리자 API 경계, 인증 principal 기반 회원 ID 주입이 구현되어 있다.
+다만 로그인, 로그아웃, 자동로그인, refresh token 저장소, access JWT 발급·검증 필터, 회원 탈퇴·정지·등급 변경 외부 API는 아직 구현되어 있지 않다.
 
-현재 여러 API는 `memberId`를 요청 파라미터나 바디로 받는다.
-인증이 도입되면 클라이언트가 전달한 `memberId`를 신뢰하지 않고, 서버가 인증 정보에서 회원 ID를 꺼내야 한다.
+과거 여러 고객 API는 `memberId`를 요청 파라미터나 바디로 받았다.
+현재 cart/order/coupon 고객 API는 클라이언트가 전달한 `memberId`를 신뢰하지 않고, 서버가 인증 정보에서 회원 ID를 꺼내 application command에 주입한다.
 
 ## 2. 사용자 질문 정리
 
@@ -30,6 +31,8 @@
 ## 3. 결정
 
 회원 인증은 **Spring Security + Access JWT + Refresh Token Rotation** 방식으로 구현한다.
+
+현재 구현 상태는 이 결정의 일부만 반영한다. Spring Security 의존성과 stateless 보호 경계는 존재하고 `/api/v1/auth/login`, `/api/v1/auth/refresh` 경로는 공개 경로로 예약되어 있지만, 해당 Auth Controller와 토큰 발급·저장·검증 흐름은 아직 없다.
 
 자동로그인은 별도 remember-me 토큰을 만들지 않고, 로그인 요청의 `rememberMe` 값에 따라 refresh token 만료 기간을 다르게 두는 방식으로 처리한다.
 
@@ -75,7 +78,7 @@ JWT claim은 최소 정보만 포함한다.
 
 - 회원가입 시 평문 비밀번호를 비밀번호 해시값으로 변환해 저장한다.
 - 로그인 시 입력 비밀번호와 저장된 해시값을 비교한다.
-- 현재 구현의 `PasswordHasher` 포트와 BCrypt 구현을 유지하되, cost는 설정으로 관리한다.
+- 현재 구현의 `PasswordHasher` 포트와 BCrypt 구현을 유지한다. 지금은 `BCryptPasswordEncoder` 기본 cost를 사용하며, 운영 구현에서 cost를 설정으로 관리한다.
 - 향후 필요하면 `DelegatingPasswordEncoder` 기반으로 알고리즘 전환 여지를 둔다.
 - 비밀번호 해시 알고리즘 전환을 위해 저장값에는 알고리즘 식별자를 포함할 수 있어야 한다.
 
@@ -93,9 +96,9 @@ JWT claim은 최소 정보만 포함한다.
 - 잠금 상태의 회원은 올바른 비밀번호를 입력해도 로그인할 수 없다.
 - 로그인 성공 시 실패 횟수는 0으로 초기화한다.
 - 존재하지 않는 이메일과 비밀번호 불일치 응답은 외부에 구분해 노출하지 않는다.
-- 로그인 실패는 계정별 카운트와 별개로 IP·이메일 기준 rate limit을 적용한다.
-- 계정 잠금 시 refresh token을 폐기하고 `authVersion`을 증가시킨다.
-- 로그인 성공, 실패, 잠금, 잠금 해제는 감사 로그로 남긴다.
+- 현재 도메인 구현은 회원별 실패 카운트와 `LOCKED` 전이를 제공한다. IP·이메일 기준 rate limit은 후속 로그인 구현에서 연결한다.
+- 계정 잠금 시 `authVersion`은 증가한다. refresh token 폐기는 refresh token 저장소가 생긴 뒤 연결한다.
+- 로그인 성공, 실패, 잠금, 잠금 해제 감사 로그는 후속 구현 대상이다.
 
 잠금 상태 표현은 `MemberStatus`에 `LOCKED`를 추가해 표현한다.
 
@@ -158,7 +161,7 @@ SUSPENDED -> ACTIVE
 - 내 주문 조회·취소
 - 내 회원 정보 조회·수정
 
-인증 도입 후에는 클라이언트가 `memberId`를 요청 바디나 쿼리로 넘기는 방식을 점진적으로 제거한다.
+고객 API에서는 클라이언트가 `memberId`를 요청 바디나 쿼리로 넘기는 방식을 제거했다.
 Controller는 `SecurityContext`에서 인증된 회원 ID를 읽어 application command로 전달한다.
 domain 계층은 Spring Security를 알지 않는다.
 
@@ -269,21 +272,21 @@ access token은 짧은 만료 시간으로 제한하되, 즉시 차단이 필요
 
 ## 10. 영향
 
-구현 시 다음 변경이 필요하다.
+현재 구현과 남은 변경은 다음과 같다.
 
-- `MemberStatus` 추가
-- 회원 로그인 실패 횟수 필드 추가
-- 회원 `authVersion` 필드 추가
-- 실패 5회 도달 시 `LOCKED` 전환
-- 로그인 성공 시 실패 횟수 초기화
+- 완료: `MemberGrade`, `MemberStatus` 추가
+- 완료: 회원 로그인 실패 횟수 필드 추가
+- 완료: 회원 `authVersion` 필드 추가
+- 완료: 실패 5회 도달 시 `LOCKED` 전환 도메인 규칙
+- 완료: 로그인 성공 시 실패 횟수 초기화 도메인 규칙
 - refresh token 저장소 추가
 - refresh token family와 session ID 저장
 - 회원 인증 스냅샷 캐시 추가
 - 상태·권한·비밀번호 변경 시 `authVersion` 증가와 캐시 무효화
 - 로그인, refresh, logout, me API 추가
-- 기존 memberId 입력 API를 인증된 회원 ID 기반으로 전환
-- 관리자 API에 역할 기반 인가 적용
-- 내 리소스 API에 소유권 기반 인가 적용
+- 완료: 기존 고객 API의 memberId 입력을 인증된 회원 ID 기반으로 전환
+- 완료: 관리자 API에 역할 기반 인가 적용
+- 완료: 내 리소스 API에 소유권 기반 인가 적용
 - 인증·인가 감사 로그 추가
 - 로그인 실패 rate limit 추가
 

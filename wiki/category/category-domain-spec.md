@@ -15,8 +15,8 @@ Category는 자기 자신을 부모로 참조하는 트리 Aggregate이며, Prod
 | 상품 부착 위치 | 리프(소분류, depth 3)에만 | |
 | 상위 검색 | 하위 리프 상품까지 펼쳐서 포함(`categoryIds IN`) | |
 | 이름 유일성 | 같은 부모 아래 형제끼리만. 루트는 부모 NULL 분기 | |
-| 상태 모델 | `ACTIVE` / `INACTIVE` 2단계(노출 토글) | |
-| 삭제 | 하드 삭제 + 자식 있으면 거부(상품 매달림 검증은 다음 단계) | |
+| 상태 모델 | `ACTIVE` / `INACTIVE` 2단계(상태 표시·운영 토글) | |
+| 삭제 | 하드 삭제 + 자식 있으면 거부(상품 매달림 검증은 현재 미구현) | |
 | 이동(재부모) | 미허용 | |
 | 부가 필드 | `sortOrder`(형제 정렬). 아이콘/이미지는 보류 | |
 | 조회 | 전체 트리 한 방(중첩 children) + 단건 상세 | |
@@ -53,7 +53,7 @@ Category는 자기 자신을 부모로 참조하는 트리 Aggregate이며, Prod
 ## 2. 이름 유일성 (형제 범위)
 
 - 같은 부모 아래 형제끼리만 유일. DB는 `(parent_id, name)` 복합 unique(`uk_categories_parent_name`).
-- **루트 문제**: 루트는 `parent_id`가 NULL이고 MySQL은 NULL 값들의 중복을 막지 않으므로, 복합 unique만으로는 루트 이름 중복을 못 막는다. application에서 `existsByParentIdAndName(null, name)`을 **`existsByParentIdIsNullAndName`(파생 쿼리)으로 분기**해 막는다.
+- **루트 문제**: 루트는 `parent_id`가 NULL이고 MySQL은 NULL 값들의 중복을 막지 않으므로, 복합 unique만으로는 루트 이름 중복을 못 막는다. application은 `CategoryRepository.existsByParentIdAndName(null, name)`을 호출하고, `CategoryRepositoryImpl`이 이를 JPA의 `existsByParentIdIsNullAndName` 파생 쿼리로 분기해 막는다.
 - `rename`: 같은 이름이면 무동작 허용, 다른 이름이면 형제 중복 재검증.
 
 ## 3. 검색 펼침 (상위 → 하위)
@@ -78,7 +78,7 @@ Category는 자기 자신을 부모로 참조하는 트리 Aggregate이며, Prod
 | 카테고리 비활성화 | categoryId | — | `ACTIVE` → `INACTIVE`, 자유(하위·상품 미조회) |
 | 카테고리 삭제 | categoryId | — | 없으면 `NOT_FOUND`, 자식 있으면 `CONFLICT`, 아니면 하드 삭제 |
 | 카테고리 단건 조회 | categoryId | `CategoryInfo` | readOnly |
-| 카테고리 트리 조회 | — | `List<CategoryTreeInfo>` | readOnly, `findAll` 후 parentId 그룹핑으로 메모리 조립, sortOrder 정렬 |
+| 카테고리 트리 조회 | — | `List<CategoryTreeInfo>` | readOnly, `findAll` 후 parentId 그룹핑으로 메모리 조립, sortOrder 정렬. 현재 `ACTIVE`/`INACTIVE` 모두 포함 |
 
 - 트리 조립은 전체 조회 후 메모리에서 부모-자식으로 묶는다. 3단계 고정이라 전체를 내려도 부담이 작다.
 
@@ -94,12 +94,12 @@ Category는 자기 자신을 부모로 참조하는 트리 Aggregate이며, Prod
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/api/v1/categories` | 전체 트리(중첩) |
-| GET | `/api/v1/categories/{id}` | 단건 상세 |
+| GET | `/api/v1/categories/{categoryId}` | 단건 상세 |
 | POST | `/api/v1/admin/categories` | 등록 |
-| PATCH | `/api/v1/admin/categories/{id}` | 이름·정렬 수정 |
-| POST | `/api/v1/admin/categories/{id}/activate` | 활성화 |
-| POST | `/api/v1/admin/categories/{id}/deactivate` | 비활성화 |
-| DELETE | `/api/v1/admin/categories/{id}` | 삭제(자식 있으면 거부) |
+| PATCH | `/api/v1/admin/categories/{categoryId}` | 이름·정렬 수정 |
+| POST | `/api/v1/admin/categories/{categoryId}/activate` | 활성화 |
+| POST | `/api/v1/admin/categories/{categoryId}/deactivate` | 비활성화 |
+| DELETE | `/api/v1/admin/categories/{categoryId}` | 삭제(자식 있으면 거부) |
 
 ## 6. ErrorType · 권한
 
@@ -110,7 +110,7 @@ Category는 자기 자신을 부모로 참조하는 트리 Aggregate이며, Prod
 ## 7. 인프라 처리 (자기 참조 트리)
 
 - `CategoryRepositoryImpl.findSelfAndDescendantIds`는 `findIdsByParentId`(직속 자식 id)와 `findIdsByParentIdIn`(손자 id)을 조합한다. id projection 쿼리(`SELECT c.id ...`)로 엔티티 전체 로드를 피한다.
-- 삭제는 `existsByParentId`로 자식 유무를 확인한 뒤 `jpa.deleteById`로 물리 삭제한다. `BaseJpaEntity`의 soft delete 마킹은 쓰지 않는다(노출 제어는 status가 담당).
+- 삭제는 `existsByParentId`로 자식 유무를 확인한 뒤 `jpa.deleteById`로 물리 삭제한다. `BaseJpaEntity`의 soft delete 마킹은 쓰지 않는다. `status`는 응답에 노출되는 운영 상태이며, 현재 트리 조회와 상품 검색에서 서버 필터로 쓰지는 않는다.
 
 ## 8. product 도메인 변경 (categoryId 검증·검색 영향)
 
@@ -136,8 +136,9 @@ Category는 자기 자신을 부모로 참조하는 트리 Aggregate이며, Prod
 
 ## 10. 보류·확장 지점 (의식적으로 미룸)
 
-- 비활성 카테고리 상품 노출 게이트(검색 연동 시 brand 게이트와 같은 방식).
-- 카테고리 삭제 시 상품 매달림 검증(product 연동 단계).
+- 비활성 카테고리 트리 필터(현재 트리 API는 모든 상태를 반환).
+- 비활성 카테고리 상품 노출 게이트. 현재 상품 검색은 카테고리 하위 펼침만 적용하고 카테고리 상태는 필터하지 않는다. 필요하면 brand 게이트와 같은 방식의 서버 필터를 별도 추가한다.
+- 카테고리 삭제 시 상품 매달림 검증(현재는 하위 카테고리만 검사).
 - 카테고리 이동(재부모) — 순환 방지·깊이 재계산 동반, 별도 유스케이스.
 - 아이콘/이미지 필드.
-- 인증/인가(카테고리 운영 행위 권한 강제 적용).
+- 인증/인가 1차 경계 적용 완료: 카테고리 운영 API는 `/api/v1/admin/**` + `ADMIN`.

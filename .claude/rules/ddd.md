@@ -5,10 +5,11 @@ CLAUDE.md "DDD 핵심 원칙"의 상세 규칙. Java 코드 작업 시 반드시
 ## 1) 5계층 분리
 
 `apps/commerce-api` 내부는 5계층 패키지로 나눈다.
+`apps/pg-simulator`는 로컬 결제 검증용 Kotlin 시뮬레이터라 현재 이 5계층 규칙의 적용 대상이 아니다.
 
 | 계층 | 패키지 | 책임 |
 |---|---|---|
-| **interfaces** | `com.commerce.interfaces.api.{도메인}` | HTTP 경계: Controller, Dto, ControllerAdvice. 외부 표현. |
+| **interfaces** | `com.commerce.interfaces.api.{도메인}` | HTTP 경계: Controller, Request/Response, ControllerAdvice. 외부 표현. |
 | **application** | `com.commerce.application.{도메인}` | 유스케이스 단위 오케스트레이션: UseCase, Info. **트랜잭션 경계**. |
 | **domain** | `com.commerce.domain.{도메인}` | 비즈니스 규칙 핵심: Model(엔티티/VO), 도메인 Service, Repository **인터페이스**. |
 | **infrastructure** | `com.commerce.infrastructure.{도메인}` | 영속화 어댑터: JpaEntity, JpaRepository, RepositoryImpl. 도메인 인터페이스를 구현. |
@@ -43,16 +44,17 @@ interfaces → application → domain ← infrastructure
 - 도메인 모델은 **순수 자바 class**. JPA 어노테이션(`@Entity`, `@Id`, `@Column`, `@Table` ...) 금지.
 - public setter 금지. 의미 있는 메서드명(`changePrice(...)`, `markAsPaid()`)으로 상태 변경.
 - 생성 시점과 상태 변경 시점에 invariant 검증. 위반 시 `CoreException(ErrorType.X, "구체 메시지")`을 던진다.
-- 신규 생성과 영속 복원을 분리: `Order.place(...)` (ID 없음) / `Order.rehydrate(...)` (ID 있음).
+- 신규 생성과 영속 복원을 분리: `Order.place(...)` (ID 없음) / `Order.reconstitute(...)` (ID 있음).
 
 ## 4) Aggregate Root 단위 트랜잭션
 
-- 트랜잭션 경계는 application의 UseCase 메서드 단위. `@Transactional`은 UseCase에 둔다.
-- 하나의 트랜잭션 안에서는 하나의 Aggregate만 수정한다 (여러 Aggregate 동시 수정 금지).
+- 트랜잭션 경계는 application의 UseCase 또는 명시적 오케스트레이터가 가진다. 단순 유스케이스는 `@Transactional`, 외부 호출을 사이에 둔 2단계 흐름은 `TransactionTemplate`으로 경계를 드러낸다.
+- 기본은 하나의 트랜잭션 안에서 하나의 Aggregate만 수정하는 것이다.
+- 예외는 문서에 "의식적 규칙 예외"로 남긴 경우에만 허용한다. 현재 예외는 product 등록의 Product+SKU 초기 생성, order 생성·취소 보상 흐름의 Order/SKU/Coupon 정합성, coupon 발급·사용의 Policy/IssuedCoupon 정합성이다. 외부 PG 호출 같은 무거운 I/O는 이런 트랜잭션 밖에 둔다.
 
 ## 5) 엔티티 연관관계 — JPA 연관관계 어노테이션 금지, 간접 참조(ID) 사용
 
-- **JPA 연관관계 어노테이션을 사용하지 않는다**: `@ManyToOne`, `@OneToMany`, `@OneToOne`, `@ManyToMany`, `@JoinColumn`, `@JoinTable` 모두 금지.
+- **JPA 엔티티 연관관계 어노테이션을 사용하지 않는다**: `@ManyToOne`, `@OneToMany`, `@OneToOne`, `@ManyToMany`, 엔티티 관계 목적의 `@JoinColumn`/`@JoinTable` 금지.
 - 엔티티 간 관계는 **상대 엔티티의 ID(Long) 또는 ID Value Object**로만 보유한다.
   - 잘못된 예: `@ManyToOne private Product product;`
   - 올바른 예: `private Long productId;` 또는 `private ProductId productId;`
@@ -62,7 +64,7 @@ interfaces → application → domain ← infrastructure
   - 트랜잭션을 작고 명시적으로 유지 가능.
   - 데이터 흐름이 코드에서 한눈에 드러난다 (필요한 시점에 application 계층이 Repository를 명시 호출해 조립).
 - **연관 데이터가 필요할 때**: application UseCase에서 각 Repository를 순차 호출해 `Info` 객체로 조립한다. domain·infrastructure 계층이 다른 Aggregate를 끌어오지 않는다.
-- 컬렉션 형태 자식(value 성격의 자식 엔티티)이 정말 필요하면 같은 Aggregate 내부에 한해 `@ElementCollection` 또는 `@Embedded` 활용 검토. 그래도 연관 어노테이션은 쓰지 않는다.
+- 컬렉션 형태 value 자식이 정말 필요하면 같은 Aggregate 내부에 한해 `@ElementCollection` 또는 `@Embedded` 활용 검토. 이때 `@CollectionTable(joinColumns = @JoinColumn(...))`처럼 값 컬렉션 테이블의 **소유자 FK 컬럼명**을 지정하는 용도는 허용한다. 다른 Aggregate/엔티티를 객체 연관으로 매핑하는 용도는 여전히 금지한다.
 
 ## 6) Repository 패턴 (도메인/영속 분리)
 

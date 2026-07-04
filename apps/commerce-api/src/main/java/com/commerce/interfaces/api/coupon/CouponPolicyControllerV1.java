@@ -15,7 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/v1/coupon-policies")
+@RequestMapping("/api/v1/admin/coupon-policies")
 @RequiredArgsConstructor
 public class CouponPolicyControllerV1 {
 

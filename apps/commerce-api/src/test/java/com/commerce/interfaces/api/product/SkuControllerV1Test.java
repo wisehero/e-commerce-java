@@ -35,13 +35,13 @@ class SkuControllerV1Test {
     private SkuStockAdjustUseCase skuStockAdjustUseCase;
 
     @Nested
-    @DisplayName("할인 적용 PATCH /api/v1/skus/{id}/discount")
+    @DisplayName("할인 적용 PATCH /api/v1/admin/skus/{id}/discount")
     class ApplyDiscount {
 
         @Test
         @DisplayName("유효 요청이면 200 + UseCase에 위임한다")
         void should_delegate_when_valid() throws Exception {
-            mockMvc.perform(patch("/api/v1/skus/1/discount")
+            mockMvc.perform(patch("/api/v1/admin/skus/1/discount")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"salePrice\": 9000}"))
                 .andExpect(status().isOk())
@@ -53,7 +53,7 @@ class SkuControllerV1Test {
         @Test
         @DisplayName("할인가가 음수면 400 + UseCase 미호출")
         void should_return400_when_negative() throws Exception {
-            mockMvc.perform(patch("/api/v1/skus/1/discount")
+            mockMvc.perform(patch("/api/v1/admin/skus/1/discount")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"salePrice\": -1}"))
                 .andExpect(status().isBadRequest())
@@ -68,7 +68,7 @@ class SkuControllerV1Test {
             willThrow(new CoreException(ErrorType.BAD_REQUEST, "할인가는 정가보다 클 수 없습니다."))
                 .given(skuPriceChangeUseCase).applyDiscount(any());
 
-            mockMvc.perform(patch("/api/v1/skus/1/discount")
+            mockMvc.perform(patch("/api/v1/admin/skus/1/discount")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"salePrice\": 9999999}"))
                 .andExpect(status().isBadRequest())
@@ -77,13 +77,13 @@ class SkuControllerV1Test {
     }
 
     @Nested
-    @DisplayName("정가 변경 PATCH /api/v1/skus/{id}/price")
+    @DisplayName("정가 변경 PATCH /api/v1/admin/skus/{id}/price")
     class ChangePrice {
 
         @Test
         @DisplayName("유효 요청이면 200 + 위임")
         void should_delegate_when_valid() throws Exception {
-            mockMvc.perform(patch("/api/v1/skus/1/price")
+            mockMvc.perform(patch("/api/v1/admin/skus/1/price")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"originalPrice\": 12000}"))
                 .andExpect(status().isOk());
@@ -97,7 +97,7 @@ class SkuControllerV1Test {
             willThrow(new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 옵션(SKU)입니다."))
                 .given(skuPriceChangeUseCase).changePrice(any());
 
-            mockMvc.perform(patch("/api/v1/skus/999/price")
+            mockMvc.perform(patch("/api/v1/admin/skus/999/price")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"originalPrice\": 12000}"))
                 .andExpect(status().isNotFound())
@@ -106,13 +106,13 @@ class SkuControllerV1Test {
     }
 
     @Nested
-    @DisplayName("재고 입고 PATCH /api/v1/skus/{id}/stock")
+    @DisplayName("재고 입고 PATCH /api/v1/admin/skus/{id}/stock")
     class Restock {
 
         @Test
         @DisplayName("유효 요청이면 200 + 위임")
         void should_delegate_when_valid() throws Exception {
-            mockMvc.perform(patch("/api/v1/skus/1/stock")
+            mockMvc.perform(patch("/api/v1/admin/skus/1/stock")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"quantity\": 50}"))
                 .andExpect(status().isOk());
@@ -123,7 +123,7 @@ class SkuControllerV1Test {
         @Test
         @DisplayName("입고 수량이 0 이하면 400 + UseCase 미호출")
         void should_return400_when_nonPositive() throws Exception {
-            mockMvc.perform(patch("/api/v1/skus/1/stock")
+            mockMvc.perform(patch("/api/v1/admin/skus/1/stock")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"quantity\": 0}"))
                 .andExpect(status().isBadRequest())

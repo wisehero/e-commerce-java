@@ -8,6 +8,6 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 @Configuration
 @EnableTransactionManagement
 @EntityScan({"com.commerce"})
-@EnableJpaRepositories({"com.commerce.infrastructure"})
+@EnableJpaRepositories({"com.commerce.infrastructure", "com.commerce.pg.infrastructure"})
 public class JpaConfig {
 }

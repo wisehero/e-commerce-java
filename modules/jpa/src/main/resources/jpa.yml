@@ -50,7 +50,7 @@ spring:
 datasource:
   mysql-jpa:
     main:
-      jdbc-url: jdbc:mysql://localhost:3307/loopers
+      jdbc-url: jdbc:mysql://localhost:3307/commerce
       username: application
       password: application
 
@@ -79,7 +79,7 @@ spring:
 datasource:
   mysql-jpa:
     main:
-      jdbc-url: jdbc:mysql://localhost:3307/loopers
+      jdbc-url: jdbc:mysql://localhost:3307/commerce
       username: application
       password: application
 
@@ -89,7 +89,7 @@ spring.config.activate.on-profile: qa
 datasource:
   mysql-jpa:
     main:
-      jdbc-url: jdbc:mysql://localhost:3307/loopers
+      jdbc-url: jdbc:mysql://localhost:3307/commerce
       username: application
       password: application
 
@@ -99,6 +99,6 @@ spring.config.activate.on-profile: prd
 datasource:
   mysql-jpa:
     main:
-      jdbc-url: jdbc:mysql://localhost:3307/loopers
+      jdbc-url: jdbc:mysql://localhost:3307/commerce
       username: application
       password: application

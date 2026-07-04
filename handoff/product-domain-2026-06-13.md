@@ -33,13 +33,13 @@ product 도메인을 DDD 5계층으로 구현. **domain·infra·application·int
 
 ## DB / 스키마 운영 방식 (이번 세션 정리)
 
-- **DB**: MySQL 8.0 (`docker/infra-compose.yml`). 호스트 포트 **3307**→3306, DB `loopers`, 계정 `application/application`.
+- **DB**: MySQL 8.0 (`docker/infra-compose.yml`). 호스트 포트 **3307**→3306, DB `commerce`, 계정 `application/application`.
 - **배선**: 표준 `spring.datasource.*`가 아니라 커스텀 `datasource.mysql-jpa.main` 수동 Hikari 빈(`modules/jpa/DataSourceConfig`).
 - **ddl-auto (프로파일별)**:
   - `local` = **none(상위 상속)** — 부팅해도 스키마/데이터 보존. (이번에 `create` 제거 → 시드가 안 날아가게)
   - `test` = **create** (컨텍스트 기동마다 새 스키마)
   - base/dev/qa/prd = none
-- **base jdbc-url에 `/${MYSQL_DATABASE}` 추가**(이전엔 DB명 없어 test/프로파일리스가 잠재 함정이었음). local jdbc-url은 `localhost:3307/loopers` 하드코딩이라 env 불필요.
+- **base jdbc-url에 `/${MYSQL_DATABASE}` 추가**(이전엔 DB명 없어 test/프로파일리스가 잠재 함정이었음). local jdbc-url은 `localhost:3307/commerce` 하드코딩이라 env 불필요.
 - **로컬 스키마 최초 생성 흐름**(local이 none이라 빈 DB엔 테이블 없음):
   ```bash
   docker compose -f docker/infra-compose.yml up -d mysql
@@ -47,7 +47,7 @@ product 도메인을 DDD 5계층으로 구현. **domain·infra·application·int
   ./gradlew :apps:commerce-api:bootRun   # 이후 일반 부팅(none) → 데이터 보존
   ```
 - **시드 100만건은 사용자가 직접 INSERT 예정.** 옵션값은 별도 `@ElementCollection` 테이블(INSERT가 두 테이블에 걸침). MySQL8 첫 접속 시 `?allowPublicKeyRetrieval=true&useSSL=false` 필요할 수 있음. 성능 테스트면 검색 인덱스(`product.status`·`product.name`·`sku.product_id`) 수동 추가 고려.
-- **미정리(향후)**: jpa.yml의 dev/qa/**prd**가 jdbc-url을 `localhost:3307/loopers`로 하드코딩 → 실환경 세팅 시 정리 필요.
+- **미정리(향후)**: jpa.yml의 dev/qa/**prd**가 jdbc-url을 `localhost:3307/commerce`로 하드코딩 → 실환경 세팅 시 정리 필요.
 
 ## 🔴 검증 안 된 것 (다음 세션 우선 확인 권장)
 

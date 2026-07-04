@@ -26,7 +26,7 @@ class MemberTest {
     class Register {
 
         @Test
-        @DisplayName("id 없이 USER 권한, BRONZE 등급으로 생성된다")
+        @DisplayName("id 없이 USER 권한, BRONZE 등급, ACTIVE 상태로 생성된다")
         void should_createWithoutId_andUserRole_when_register() {
             // when
             Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
@@ -38,7 +38,10 @@ class MemberTest {
                 .satisfies(m -> assertThat(m.getPassword()).isEqualTo(VALID_PASSWORD))
                 .satisfies(m -> assertThat(m.getNickname()).isEqualTo(VALID_NICKNAME))
                 .satisfies(m -> assertThat(m.getRole()).isEqualTo(MemberRole.USER))
-                .satisfies(m -> assertThat(m.getGrade()).isEqualTo(MemberGrade.BRONZE));
+                .satisfies(m -> assertThat(m.getGrade()).isEqualTo(MemberGrade.BRONZE))
+                .satisfies(m -> assertThat(m.getStatus()).isEqualTo(MemberStatus.ACTIVE))
+                .satisfies(m -> assertThat(m.getLoginFailureCount()).isZero())
+                .satisfies(m -> assertThat(m.getAuthVersion()).isEqualTo(1));
         }
 
         @Test
@@ -87,17 +90,21 @@ class MemberTest {
     class Reconstitute {
 
         @Test
-        @DisplayName("id, role, grade를 그대로 복원한다")
+        @DisplayName("id, role, grade, status, loginFailureCount, authVersion을 그대로 복원한다")
         void should_reconstitute_when_validArgs() {
             // when
             Member member = Member.reconstitute(
-                42L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.ADMIN, MemberGrade.VIP);
+                42L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.ADMIN, MemberGrade.VIP,
+                MemberStatus.SUSPENDED, 3, 7);
 
             // then
             assertThat(member)
                 .satisfies(m -> assertThat(m.getId()).isEqualTo(42L))
                 .satisfies(m -> assertThat(m.getRole()).isEqualTo(MemberRole.ADMIN))
-                .satisfies(m -> assertThat(m.getGrade()).isEqualTo(MemberGrade.VIP));
+                .satisfies(m -> assertThat(m.getGrade()).isEqualTo(MemberGrade.VIP))
+                .satisfies(m -> assertThat(m.getStatus()).isEqualTo(MemberStatus.SUSPENDED))
+                .satisfies(m -> assertThat(m.getLoginFailureCount()).isEqualTo(3))
+                .satisfies(m -> assertThat(m.getAuthVersion()).isEqualTo(7));
         }
 
         @Test
@@ -116,6 +123,38 @@ class MemberTest {
             // when & then
             assertThatThrownBy(() -> Member.reconstitute(
                     1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.USER, null))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+        }
+
+        @Test
+        @DisplayName("상태가 null이면 BAD_REQUEST 예외가 발생한다")
+        void should_throwException_when_reconstitute_statusNull() {
+            // when & then
+            assertThatThrownBy(() -> Member.reconstitute(
+                    1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.USER, VALID_GRADE, null, 0, 1))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+        }
+
+        @Test
+        @DisplayName("로그인 실패 횟수가 음수이면 BAD_REQUEST 예외가 발생한다")
+        void should_throwException_when_reconstitute_loginFailureCountNegative() {
+            // when & then
+            assertThatThrownBy(() -> Member.reconstitute(
+                    1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.USER, VALID_GRADE,
+                    MemberStatus.ACTIVE, -1, 1))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+        }
+
+        @Test
+        @DisplayName("인증 버전이 1보다 작으면 BAD_REQUEST 예외가 발생한다")
+        void should_throwException_when_reconstitute_authVersionLessThanOne() {
+            // when & then
+            assertThatThrownBy(() -> Member.reconstitute(
+                    1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME, MemberRole.USER, VALID_GRADE,
+                    MemberStatus.ACTIVE, 0, 0))
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
         }
@@ -171,6 +210,148 @@ class MemberTest {
             // when & then
             assertThat(member.matchPassword("password123", HASHER)).isTrue();
             assertThat(member.matchPassword("wrong-password", HASHER)).isFalse();
+        }
+    }
+
+    @Nested
+    @DisplayName("로그인 상태")
+    class LoginState {
+
+        @Test
+        @DisplayName("로그인 실패 4회까지는 ACTIVE 상태를 유지한다")
+        void should_keepActive_when_loginFailureCountLessThanFive() {
+            // given
+            Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
+
+            // when
+            for (int i = 0; i < 4; i++) {
+                member.recordLoginFailure();
+            }
+
+            // then
+            assertThat(member.getLoginFailureCount()).isEqualTo(4);
+            assertThat(member.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+            assertThat(member.getAuthVersion()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("로그인 실패 5회에 도달하면 LOCKED 상태가 되고 authVersion이 증가한다")
+        void should_lockAndIncreaseAuthVersion_when_loginFailureCountReachesFive() {
+            // given
+            Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
+
+            // when
+            for (int i = 0; i < 5; i++) {
+                member.recordLoginFailure();
+            }
+
+            // then
+            assertThat(member.getLoginFailureCount()).isEqualTo(5);
+            assertThat(member.getStatus()).isEqualTo(MemberStatus.LOCKED);
+            assertThat(member.getAuthVersion()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("로그인 실패 횟수를 초기화한다")
+        void should_resetLoginFailures() {
+            // given
+            Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
+            member.recordLoginFailure();
+            member.recordLoginFailure();
+
+            // when
+            member.resetLoginFailures();
+
+            // then
+            assertThat(member.getLoginFailureCount()).isZero();
+            assertThat(member.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+            assertThat(member.getAuthVersion()).isEqualTo(1);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"LOCKED", "SUSPENDED", "WITHDRAWN"})
+        @DisplayName("LOCKED, SUSPENDED, WITHDRAWN 상태는 로그인할 수 없다")
+        void should_throwException_when_loginNotAllowed(MemberStatus status) {
+            // given
+            Member member = Member.reconstitute(1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME,
+                MemberRole.USER, VALID_GRADE, status, 0, 2);
+
+            // when & then
+            assertThatThrownBy(member::ensureLoginAllowed)
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+        }
+
+        @Test
+        @DisplayName("ACTIVE 상태는 로그인할 수 있다")
+        void should_notThrowException_when_active() {
+            // given
+            Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
+
+            // when & then
+            member.ensureLoginAllowed();
+        }
+    }
+
+    @Nested
+    @DisplayName("상태 변경")
+    class StatusChange {
+
+        @Test
+        @DisplayName("정지하면 SUSPENDED 상태가 되고 authVersion이 증가한다")
+        void should_suspendAndIncreaseAuthVersion() {
+            // given
+            Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
+
+            // when
+            member.suspend();
+
+            // then
+            assertThat(member.getStatus()).isEqualTo(MemberStatus.SUSPENDED);
+            assertThat(member.getAuthVersion()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("탈퇴하면 WITHDRAWN 상태가 되고 authVersion이 증가한다")
+        void should_withdrawAndIncreaseAuthVersion() {
+            // given
+            Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
+
+            // when
+            member.withdraw();
+
+            // then
+            assertThat(member.getStatus()).isEqualTo(MemberStatus.WITHDRAWN);
+            assertThat(member.getAuthVersion()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("잠금 해제하면 ACTIVE 상태가 되고 실패 횟수가 초기화되며 authVersion이 증가한다")
+        void should_unlockAndResetLoginFailuresAndIncreaseAuthVersion() {
+            // given
+            Member member = Member.reconstitute(1L, VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME,
+                MemberRole.USER, VALID_GRADE, MemberStatus.LOCKED, 5, 2);
+
+            // when
+            member.unlock();
+
+            // then
+            assertThat(member.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+            assertThat(member.getLoginFailureCount()).isZero();
+            assertThat(member.getAuthVersion()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("authVersion을 명시적으로 증가시킨다")
+        void should_increaseAuthVersion() {
+            // given
+            Member member = Member.register(VALID_EMAIL, VALID_PASSWORD, VALID_NICKNAME);
+
+            // when
+            member.increaseAuthVersion();
+
+            // then
+            assertThat(member.getAuthVersion()).isEqualTo(2);
         }
     }
 

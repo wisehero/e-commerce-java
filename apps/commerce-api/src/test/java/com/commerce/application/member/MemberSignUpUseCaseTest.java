@@ -19,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.commerce.domain.member.Email;
 import com.commerce.domain.member.Member;
 import com.commerce.domain.member.MemberRepository;
+import com.commerce.domain.member.MemberStatus;
 import com.commerce.domain.member.PasswordHasher;
 import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
@@ -126,6 +127,27 @@ class MemberSignUpUseCaseTest {
             then(memberRepository).should().save(captor.capture());
             assertThat(captor.getValue().getPassword().hashedValue())
                 .isEqualTo("hashed:password123");
+        }
+
+        @Test
+        @DisplayName("신규 회원은 ACTIVE 상태, 로그인 실패 횟수 0, 인증 버전 1로 저장한다")
+        void should_saveInitialAuthState_when_signUp() {
+            // given
+            given(memberRepository.existsByEmail(any())).willReturn(false);
+            given(memberRepository.existsByNickname("오딘")).willReturn(false);
+            given(passwordHasher.hash("password123")).willReturn("hashed:password123");
+            given(memberRepository.save(any(Member.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+            // when
+            useCase.signUp(command);
+
+            // then
+            ArgumentCaptor<Member> captor = ArgumentCaptor.forClass(Member.class);
+            then(memberRepository).should().save(captor.capture());
+            assertThat(captor.getValue().getStatus()).isEqualTo(MemberStatus.ACTIVE);
+            assertThat(captor.getValue().getLoginFailureCount()).isZero();
+            assertThat(captor.getValue().getAuthVersion()).isEqualTo(1);
         }
 
         @Test

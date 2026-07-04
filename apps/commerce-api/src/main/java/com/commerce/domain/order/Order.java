@@ -47,19 +47,39 @@ public class Order {
     public static Order place(Long memberId, List<OrderLine> orderLines, Money discountAmount, Long usedCouponId) {
         Money totalAmount = totalAmountOf(orderLines);
         Money normalizedDiscount = discountAmount == null ? Money.ZERO : discountAmount;
-        return new Order(null, memberId, OrderStatus.PAYMENT_PENDING, orderLines, totalAmount,
-            normalizedDiscount, totalAmount.minus(normalizedDiscount), usedCouponId);
+        return new Order(null,
+            memberId,
+            OrderStatus.PAYMENT_PENDING,
+            orderLines,
+            totalAmount,
+            normalizedDiscount,
+            totalAmount.minus(normalizedDiscount),
+            usedCouponId);
     }
 
     /** 영속 복원: 쿠폰 도입 전 주문은 주문 총액과 청구액이 같다. */
     public static Order reconstitute(Long id, Long memberId, OrderStatus status,
         List<OrderLine> orderLines, Money totalAmount) {
-        return reconstitute(id, memberId, status, orderLines, totalAmount, Money.ZERO, totalAmount, null);
+        return reconstitute(id,
+            memberId,
+            status,
+            orderLines,
+            totalAmount,
+            Money.ZERO,
+            totalAmount,
+            null);
     }
 
     public static Order reconstitute(Long id, Long memberId, OrderStatus status,
         List<OrderLine> orderLines, Money totalAmount, Money discountAmount, Money payableAmount, Long usedCouponId) {
-        return new Order(id, memberId, status, orderLines, totalAmount, discountAmount, payableAmount, usedCouponId);
+        return new Order(id,
+            memberId,
+            status,
+            orderLines,
+            totalAmount,
+            discountAmount,
+            payableAmount,
+            usedCouponId);
     }
 
     private void validate() {

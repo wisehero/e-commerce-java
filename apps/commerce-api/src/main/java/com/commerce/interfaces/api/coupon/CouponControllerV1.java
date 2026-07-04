@@ -3,7 +3,6 @@ package com.commerce.interfaces.api.coupon;
 import io.swagger.v3.oas.annotations.Operation;
 
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -14,6 +13,7 @@ import com.commerce.application.coupon.CouponIssueUseCase;
 import com.commerce.application.coupon.CouponQueryUseCase;
 import com.commerce.interfaces.api.ApiResponse;
 import com.commerce.interfaces.api.PageResponse;
+import com.commerce.interfaces.api.security.AuthenticatedMember;
 import com.commerce.support.page.PageResult;
 
 import jakarta.validation.Valid;
@@ -28,19 +28,22 @@ public class CouponControllerV1 {
 
     @Operation(summary = "쿠폰 발급")
     @PostMapping("/api/v1/coupons")
-    public ApiResponse<CouponResponse> issue(@Valid @RequestBody CouponIssueRequest request) {
-        return ApiResponse.success(CouponResponse.from(couponIssueUseCase.issue(request.toCommand())));
+    public ApiResponse<CouponResponse> issue(AuthenticatedMember authenticatedMember,
+        @Valid @RequestBody CouponIssueRequest request) {
+        return ApiResponse.success(CouponResponse.from(couponIssueUseCase.issue(
+            request.toCommand(authenticatedMember.memberId()))));
     }
 
-    @Operation(summary = "회원 쿠폰 목록 조회")
-    @GetMapping("/api/v1/members/{memberId}/coupons")
+    @Operation(summary = "내 쿠폰 목록 조회")
+    @GetMapping("/api/v1/coupons/me")
     public ApiResponse<PageResponse<CouponResponse>> getByMember(
-        @PathVariable Long memberId,
+        AuthenticatedMember authenticatedMember,
         @RequestParam(required = false) String status,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
-        PageResult<CouponInfo> result = couponQueryUseCase.getByMember(memberId, status, page, size);
+        PageResult<CouponInfo> result = couponQueryUseCase.getByMember(authenticatedMember.memberId(), status, page,
+            size);
         return ApiResponse.success(PageResponse.of(result, CouponResponse::from));
     }
 }

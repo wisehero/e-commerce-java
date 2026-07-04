@@ -1,5 +1,6 @@
 package com.commerce.interfaces.api.cart;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -17,14 +18,19 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.commerce.application.cart.CartAddItemCommand;
 import com.commerce.application.cart.CartAddItemUseCase;
+import com.commerce.application.cart.CartChangeQuantityCommand;
 import com.commerce.application.cart.CartChangeQuantityUseCase;
+import com.commerce.application.cart.CartCheckoutCommand;
 import com.commerce.application.cart.CartCheckoutUseCase;
 import com.commerce.application.cart.CartClearUseCase;
 import com.commerce.application.cart.CartInfo;
@@ -39,6 +45,7 @@ import com.commerce.support.error.CoreException;
 import com.commerce.support.error.ErrorType;
 
 @WebMvcTest(CartControllerV1.class)
+@WithMockUser(username = "1", roles = "USER")
 class CartControllerV1Test {
 
     @Autowired
@@ -74,24 +81,19 @@ class CartControllerV1Test {
     class View {
 
         @Test
-        @DisplayName("200 OK + enrich된 장바구니를 반환한다")
+        @DisplayName("memberId 요청 파라미터 없이 인증 회원의 장바구니를 반환한다")
         void should_returnCart_when_view() throws Exception {
             given(cartViewUseCase.view(1L)).willReturn(sampleCart());
 
-            mockMvc.perform(get("/api/v1/carts").param("memberId", "1"))
+            mockMvc.perform(get("/api/v1/carts"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.result").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.cartTotal").value(16000))
                 .andExpect(jsonPath("$.data.lines[0].skuId").value(10))
                 .andExpect(jsonPath("$.data.lines[0].lineSubtotal").value(16000))
                 .andExpect(jsonPath("$.data.lines[0].status").value("PURCHASABLE"));
-        }
 
-        @Test
-        @DisplayName("memberId가 없으면 400")
-        void should_return400_when_memberIdMissing() throws Exception {
-            mockMvc.perform(get("/api/v1/carts"))
-                .andExpect(status().isBadRequest());
+            then(cartViewUseCase).should().view(1L);
         }
     }
 
@@ -100,12 +102,12 @@ class CartControllerV1Test {
     class AddItem {
 
         @Test
-        @DisplayName("유효 요청이면 200 OK + 장바구니를 반환한다")
+        @DisplayName("memberId 없는 유효 요청이면 인증 회원 기준 command로 담는다")
         void should_returnCart_when_validRequest() throws Exception {
             given(cartAddItemUseCase.addItem(any())).willReturn(sampleCart());
 
             String body = """
-                { "memberId": 1, "skuId": 10, "quantity": 2 }
+                { "skuId": 10, "quantity": 2 }
                 """;
 
             mockMvc.perform(post("/api/v1/carts/items")
@@ -114,13 +116,19 @@ class CartControllerV1Test {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.result").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.lines[0].skuId").value(10));
+
+            ArgumentCaptor<CartAddItemCommand> captor = ArgumentCaptor.forClass(CartAddItemCommand.class);
+            then(cartAddItemUseCase).should().addItem(captor.capture());
+            assertThat(captor.getValue().memberId()).isEqualTo(1L);
+            assertThat(captor.getValue().skuId()).isEqualTo(10L);
+            assertThat(captor.getValue().quantity()).isEqualTo(2);
         }
 
         @Test
         @DisplayName("수량이 0이면 400 + FAIL, UseCase 미호출")
         void should_return400_when_quantityZero() throws Exception {
             String body = """
-                { "memberId": 1, "skuId": 10, "quantity": 0 }
+                { "skuId": 10, "quantity": 0 }
                 """;
 
             mockMvc.perform(post("/api/v1/carts/items")
@@ -139,7 +147,7 @@ class CartControllerV1Test {
                 .given(cartAddItemUseCase).addItem(any());
 
             String body = """
-                { "memberId": 999, "skuId": 10, "quantity": 2 }
+                { "skuId": 10, "quantity": 2 }
                 """;
 
             mockMvc.perform(post("/api/v1/carts/items")
@@ -157,12 +165,12 @@ class CartControllerV1Test {
     class Checkout {
 
         @Test
-        @DisplayName("유효 요청이면 200 OK + 생성된 주문과 sourceCartId를 반환한다")
+        @DisplayName("memberId 없는 유효 요청이면 인증 회원 기준 command로 체크아웃한다")
         void should_checkoutCart_when_validRequest() throws Exception {
             given(cartCheckoutUseCase.checkout(any())).willReturn(sampleOrder());
 
             String body = """
-                { "memberId": 1, "lockMode": "optimistic" }
+                { "lockMode": "optimistic" }
                 """;
 
             mockMvc.perform(post("/api/v1/carts/checkout")
@@ -174,7 +182,10 @@ class CartControllerV1Test {
                 .andExpect(jsonPath("$.data.status").value("PAID"))
                 .andExpect(jsonPath("$.data.sourceCartId").value(100));
 
-            then(cartCheckoutUseCase).should().checkout(any());
+            ArgumentCaptor<CartCheckoutCommand> captor = ArgumentCaptor.forClass(CartCheckoutCommand.class);
+            then(cartCheckoutUseCase).should().checkout(captor.capture());
+            assertThat(captor.getValue().memberId()).isEqualTo(1L);
+            assertThat(captor.getValue().lockMode()).isEqualTo("optimistic");
         }
 
         @Test
@@ -184,7 +195,7 @@ class CartControllerV1Test {
                 .willThrow(new CoreException(ErrorType.BAD_REQUEST, "장바구니가 비어 있습니다."));
 
             String body = """
-                { "memberId": 1, "lockMode": "optimistic" }
+                { "lockMode": "optimistic" }
                 """;
 
             mockMvc.perform(post("/api/v1/carts/checkout")
@@ -199,7 +210,7 @@ class CartControllerV1Test {
         @DisplayName("lockMode가 비어 있으면 400 + FAIL, UseCase 미호출")
         void should_return400_when_lockModeBlank() throws Exception {
             String body = """
-                { "memberId": 1, "lockMode": "" }
+                { "lockMode": "" }
                 """;
 
             mockMvc.perform(post("/api/v1/carts/checkout")
@@ -217,12 +228,12 @@ class CartControllerV1Test {
     class ChangeQuantity {
 
         @Test
-        @DisplayName("유효 요청이면 200 OK + 장바구니를 반환한다")
+        @DisplayName("memberId 없는 유효 요청이면 인증 회원 기준 command로 수량을 변경한다")
         void should_returnCart_when_validRequest() throws Exception {
             given(cartChangeQuantityUseCase.changeQuantity(any())).willReturn(sampleCart());
 
             String body = """
-                { "memberId": 1, "quantity": 5 }
+                { "quantity": 5 }
                 """;
 
             mockMvc.perform(patch("/api/v1/carts/items/10")
@@ -230,6 +241,13 @@ class CartControllerV1Test {
                     .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.result").value("SUCCESS"));
+
+            ArgumentCaptor<CartChangeQuantityCommand> captor =
+                ArgumentCaptor.forClass(CartChangeQuantityCommand.class);
+            then(cartChangeQuantityUseCase).should().changeQuantity(captor.capture());
+            assertThat(captor.getValue().memberId()).isEqualTo(1L);
+            assertThat(captor.getValue().skuId()).isEqualTo(10L);
+            assertThat(captor.getValue().quantity()).isEqualTo(5);
         }
     }
 
@@ -242,7 +260,7 @@ class CartControllerV1Test {
         void should_returnCart_when_remove() throws Exception {
             given(cartRemoveItemUseCase.removeItem(1L, 10L)).willReturn(sampleCart());
 
-            mockMvc.perform(delete("/api/v1/carts/items/10").param("memberId", "1"))
+            mockMvc.perform(delete("/api/v1/carts/items/10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.result").value("SUCCESS"));
 
@@ -257,7 +275,7 @@ class CartControllerV1Test {
         @Test
         @DisplayName("200 OK + SUCCESS를 반환하고 clear를 호출한다")
         void should_clear_when_delete() throws Exception {
-            mockMvc.perform(delete("/api/v1/carts").param("memberId", "1"))
+            mockMvc.perform(delete("/api/v1/carts"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.result").value("SUCCESS"));
 

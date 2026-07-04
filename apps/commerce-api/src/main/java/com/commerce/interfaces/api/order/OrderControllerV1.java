@@ -16,6 +16,7 @@ import com.commerce.application.order.OrderPlaceUseCase;
 import com.commerce.application.order.OrderQueryUseCase;
 import com.commerce.interfaces.api.ApiResponse;
 import com.commerce.interfaces.api.PageResponse;
+import com.commerce.interfaces.api.security.AuthenticatedMember;
 import com.commerce.support.page.PageResult;
 
 import jakarta.validation.Valid;
@@ -32,33 +33,34 @@ public class OrderControllerV1 {
 
     @Operation(summary = "주문 생성")
     @PostMapping
-    public ApiResponse<OrderResponse> place(@Valid @RequestBody OrderPlaceRequest request) {
-        OrderInfo info = orderPlaceUseCase.place(request.toCommand());
+    public ApiResponse<OrderResponse> place(AuthenticatedMember authenticatedMember,
+        @Valid @RequestBody OrderPlaceRequest request) {
+        OrderInfo info = orderPlaceUseCase.place(request.toCommand(authenticatedMember.memberId()));
         return ApiResponse.success(OrderResponse.from(info));
     }
 
     @Operation(summary = "주문 취소")
     @PostMapping("/{orderId}/cancel")
-    public ApiResponse<OrderResponse> cancel(@PathVariable Long orderId) {
-        OrderInfo info = orderCancelUseCase.cancel(orderId);
+    public ApiResponse<OrderResponse> cancel(AuthenticatedMember authenticatedMember, @PathVariable Long orderId) {
+        OrderInfo info = orderCancelUseCase.cancel(authenticatedMember.memberId(), orderId);
         return ApiResponse.success(OrderResponse.from(info));
     }
 
     @Operation(summary = "주문 상세 조회")
     @GetMapping("/{orderId}")
-    public ApiResponse<OrderResponse> getById(@PathVariable Long orderId) {
-        OrderInfo info = orderQueryUseCase.getById(orderId);
+    public ApiResponse<OrderResponse> getById(AuthenticatedMember authenticatedMember, @PathVariable Long orderId) {
+        OrderInfo info = orderQueryUseCase.getById(authenticatedMember.memberId(), orderId);
         return ApiResponse.success(OrderResponse.from(info));
     }
 
-    @Operation(summary = "회원 주문 목록 조회")
+    @Operation(summary = "내 주문 목록 조회")
     @GetMapping
     public ApiResponse<PageResponse<OrderResponse>> getByMember(
-        @RequestParam Long memberId,
+        AuthenticatedMember authenticatedMember,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
-        PageResult<OrderInfo> result = orderQueryUseCase.getByMember(memberId, page, size);
+        PageResult<OrderInfo> result = orderQueryUseCase.getByMember(authenticatedMember.memberId(), page, size);
         return ApiResponse.success(PageResponse.of(result, OrderResponse::from));
     }
 }

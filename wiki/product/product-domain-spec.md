@@ -115,12 +115,12 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 
 - 규칙은 "수정"을 말하며, 신규 **생성**은 기존 상태 변경이 아니고 경합이 없다.
 - 상품과 그 옵션은 함께 태어나는 게 도메인상 자연스럽고, 쪼개면 "옵션 0개 상품"이라는 어색한 중간 상태 + 고아 상품 위험이 생긴다.
-- 흐름: `POST /products`가 상품 + 옵션 목록을 한 번에 받아 한 `@Transactional`에서 Product 저장 후 SKU들 저장.
+- 흐름: `POST /api/v1/admin/products`가 상품 + 옵션 목록을 한 번에 받아 한 `@Transactional`에서 Product 저장 후 SKU들 저장.
 - 단, **수정**(가격/재고/상태)은 Aggregate별 독립 트랜잭션을 유지한다.
 
 ## 6. 5계층 매핑
 
-- **interfaces**: `ProductControllerV1`(`/api/v1/products`), `*Request`/`*Response`.
+- **interfaces**: `ProductControllerV1`(`/api/v1/products` 공개 조회), `ProductAdminControllerV1`(`/api/v1/admin/products` 관리), `SkuControllerV1`(`/api/v1/admin/skus` 관리), `*Request`/`*Response`.
 - **application**: 위 UseCase들, `*Command`/`*Criteria`/`*Info`.
 - **domain**: `Product`/`Sku`/VO/`ProductStatus`, `ProductRepository`·`SkuRepository`(인터페이스).
 - **infrastructure**: `ProductJpaEntity`/`SkuJpaEntity`(+`OptionValue` `@Embeddable`), JpaRepository, RepositoryImpl(`Criteria→Pageable`, `Page→PageResult` 매핑). JPA 연관관계 어노테이션 없이 ID 참조.
@@ -134,8 +134,8 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 
 ## 8. 권한
 
-- 현재 인증 인프라 없음(`spring-security-crypto`로 BCrypt만 사용, Spring Security·SecurityConfig·로그인 없음).
-- 상품 등록/수정/단종은 본질적으로 ADMIN 행위지만 **강제 적용 보류** — 의도는 TODO로 표시, 실제 권한 검증은 인증 도메인을 만들 때 일괄 적용.
+- 상품 목록/상세 조회는 고객 카탈로그 탐색 목적이므로 공개 API로 유지한다.
+- 상품 등록/상태 변경과 SKU 할인/가격/재고 변경은 `/api/v1/admin/**` 관리 API로 분리하고 `ADMIN` 권한만 허용한다.
 
 ## 9. 보류·확장 지점 (의식적으로 미룸)
 
@@ -143,7 +143,7 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 - ~~Brand 도메인 + ID 존재 검증~~ → 해소: [`../brand/brand-domain-spec.md`](../brand/brand-domain-spec.md)(brandId 필수화·존재검증·노출 게이트).
 - ~~Category 도메인 + 존재 검증~~ → 해소: [`../category/category-domain-spec.md`](../category/category-domain-spec.md)(categoryId 존재+리프 검증, 상위 검색 하위 펼침).
 - 검색엔진(현재 DB LIKE).
-- 인증/인가(현재 권한 보류).
+- 인증/인가 1차 경계 적용 완료: 고객 카탈로그 조회는 공개, 상품·SKU 관리 API는 `/api/v1/admin/**` + `ADMIN`.
 - 상품 기본정보 수정·옵션 추가/삭제.
 - 할인 = 쿠폰/프로모션 도메인(현재 `salePrice`는 단순 직접 할인가).
 - 다중 이미지 갤러리(현재 대표 1장).

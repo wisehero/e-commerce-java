@@ -6,13 +6,10 @@ import jakarta.validation.constraints.NotNull;
 
 public record CouponIssueRequest(
     @NotNull(message = "쿠폰 정책 ID는 필수입니다.")
-    Long policyId,
-
-    @NotNull(message = "회원 ID는 필수입니다.")
-    Long memberId
+    Long policyId
 ) {
 
-    public CouponIssueCommand toCommand() {
+    public CouponIssueCommand toCommand(Long memberId) {
         return new CouponIssueCommand(policyId, memberId);
     }
 }

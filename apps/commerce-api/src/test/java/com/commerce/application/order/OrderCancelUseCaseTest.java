@@ -40,6 +40,7 @@ import com.commerce.support.error.ErrorType;
 class OrderCancelUseCaseTest {
 
     private static final Long MEMBER_ID = 1L;
+    private static final Long OTHER_MEMBER_ID = 2L;
     private static final Long SKU_ID = 10L;
     private static final Long PRODUCT_ID = 100L;
     private static final Long ORDER_ID = 1000L;
@@ -103,7 +104,7 @@ class OrderCancelUseCaseTest {
             givenStockRestorable();
 
             // when
-            OrderInfo info = useCase.cancel(ORDER_ID);
+            OrderInfo info = useCase.cancel(MEMBER_ID, ORDER_ID);
 
             // then
             assertThat(info.status()).isEqualTo("CANCELLED");
@@ -119,7 +120,7 @@ class OrderCancelUseCaseTest {
             givenStockRestorable();
 
             // when
-            OrderInfo info = useCase.cancel(ORDER_ID);
+            OrderInfo info = useCase.cancel(MEMBER_ID, ORDER_ID);
 
             // then
             assertThat(info.status()).isEqualTo("CANCELLED");
@@ -135,7 +136,7 @@ class OrderCancelUseCaseTest {
             givenStockRestorable();
 
             // when
-            OrderInfo info = useCase.cancel(ORDER_ID);
+            OrderInfo info = useCase.cancel(MEMBER_ID, ORDER_ID);
 
             // then
             assertThat(info.status()).isEqualTo("CANCELLED");
@@ -150,9 +151,24 @@ class OrderCancelUseCaseTest {
             given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(orderWith(OrderStatus.CANCELLED)));
 
             // when & then
-            assertThatThrownBy(() -> useCase.cancel(ORDER_ID))
+            assertThatThrownBy(() -> useCase.cancel(MEMBER_ID, ORDER_ID))
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+            then(paymentGateway).should(never()).refund(any(), any());
+        }
+
+        @Test
+        @DisplayName("다른 회원의 주문이면 NOT_FOUND 예외가 발생하고 보상 처리를 하지 않는다")
+        void should_throwNotFound_when_otherMemberOrder() {
+            // given
+            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(orderWith(OrderStatus.PAID)));
+
+            // when & then
+            assertThatThrownBy(() -> useCase.cancel(OTHER_MEMBER_ID, ORDER_ID))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.NOT_FOUND);
+            then(skuRepository).should(never()).save(any());
+            then(issuedCouponRepository).should(never()).restoreByOrderId(any());
             then(paymentGateway).should(never()).refund(any(), any());
         }
 
@@ -163,7 +179,7 @@ class OrderCancelUseCaseTest {
             given(orderRepository.findById(ORDER_ID)).willReturn(Optional.empty());
 
             // when & then
-            assertThatThrownBy(() -> useCase.cancel(ORDER_ID))
+            assertThatThrownBy(() -> useCase.cancel(MEMBER_ID, ORDER_ID))
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.NOT_FOUND);
         }

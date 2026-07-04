@@ -33,8 +33,9 @@ public class OrderCouponApplier {
     }
 
     /** 저장 전: 쿠폰이 없으면 할인 0원. 있으면 카테고리 서브트리를 신선 해소해 할인액을 계산한다. */
-    public AppliedCoupon apply(Long couponId, List<DiscountableLine> discountableLines) {
+    public AppliedCoupon apply(Long couponId, Long memberId, List<DiscountableLine> discountableLines) {
         IssuedCoupon coupon = findCoupon(couponId);
+        ensureOwner(coupon, memberId);
         Set<Long> resolvedCategoryIds = resolveCategoryIds(coupon);
         Money discount = coupon == null
             ? Money.ZERO
@@ -61,6 +62,12 @@ public class OrderCouponApplier {
         }
         return issuedCouponRepository.findById(couponId)
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 쿠폰입니다."));
+    }
+
+    private void ensureOwner(IssuedCoupon coupon, Long memberId) {
+        if (coupon != null && !coupon.getMemberId().equals(memberId)) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "쿠폰 소유자가 일치하지 않습니다.");
+        }
     }
 
     /** CATEGORY scope면 대상 카테고리의 서브트리 id 집합을 주문 시점에 신선 해소한다. 그 외엔 빈 집합. */

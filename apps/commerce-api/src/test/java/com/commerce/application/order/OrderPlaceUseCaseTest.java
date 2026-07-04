@@ -59,6 +59,7 @@ import com.commerce.support.error.ErrorType;
 class OrderPlaceUseCaseTest {
 
     private static final Long MEMBER_ID = 1L;
+    private static final Long OTHER_MEMBER_ID = 2L;
     private static final Long SKU_ID = 10L;
     private static final Long PRODUCT_ID = 100L;
     private static final Long ORDER_ID = 1000L;
@@ -126,6 +127,16 @@ class OrderPlaceUseCaseTest {
 
     private IssuedCoupon coupon() {
         return IssuedCoupon.reconstitute(COUPON_ID, 20L, MEMBER_ID,
+            ApplicabilityScope.whole(),
+            new DiscountRule(DiscountType.FIXED, 5000L, null, Money.ZERO),
+            com.commerce.domain.coupon.CouponStatus.UNUSED,
+            java.time.ZonedDateTime.now().minusDays(1),
+            java.time.ZonedDateTime.now().plusDays(1),
+            null);
+    }
+
+    private IssuedCoupon otherMemberCoupon() {
+        return IssuedCoupon.reconstitute(COUPON_ID, 20L, OTHER_MEMBER_ID,
             ApplicabilityScope.whole(),
             new DiscountRule(DiscountType.FIXED, 5000L, null, Money.ZERO),
             com.commerce.domain.coupon.CouponStatus.UNUSED,
@@ -323,6 +334,25 @@ class OrderPlaceUseCaseTest {
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
             then(orderRepository).should(never()).save(any());
+        }
+
+        @Test
+        @DisplayName("다른 회원의 쿠폰이면 BAD_REQUEST 예외가 발생하고 주문을 저장하지 않는다")
+        void should_throwBadRequest_when_couponOwnedByOtherMember() {
+            // given
+            given(memberRepository.findById(MEMBER_ID)).willReturn(Optional.of(mock(Member.class)));
+            given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku()));
+            given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
+            given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.ACTIVE)));
+            given(issuedCouponRepository.findById(COUPON_ID)).willReturn(Optional.of(otherMemberCoupon()));
+
+            // when & then
+            assertThatThrownBy(() -> useCase.place(couponCommand("optimistic")))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+            then(orderRepository).should(never()).save(any());
+            then(issuedCouponRepository).should(never()).markUsedIfAvailable(any(), any(), any(), any());
+            then(paymentGateway).should(never()).pay(any(), any());
         }
     }
 }

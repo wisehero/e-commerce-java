@@ -1,6 +1,6 @@
 # 회원 인증·인가 구현 계획
 
-작성: 2026-07-04 · 상태: 구현 전 계획
+작성: 2026-07-04 · 상태: 단계별 구현 진행 중
 
 ## 1. 목표
 
@@ -26,14 +26,14 @@
 
 | 검증 항목 | 결과 | 영향 |
 |---|---|---|
-| Spring Security web 의존성 | 없음. 현재 `spring-security-crypto`만 사용 | `spring-boot-starter-security`, OAuth2 Resource Server/JWT 관련 의존성 추가 필요 |
+| Spring Security web 의존성 | 있음. `spring-boot-starter-security`, OAuth2 Resource Server 의존성과 기본 `SecurityFilterChain` 존재 | JWT 검증·로그인/refresh 실제 흐름은 후속 구현 필요 |
 | 비밀번호 해시 | `PasswordHasher` 포트와 `BcryptPasswordHasher` 구현 존재 | 기존 포트를 유지하고 cost 설정화만 추가 |
 | Redis | `modules:redis`와 `RedisTemplate<String, String>` 구성 존재 | 인증 스냅샷, denylist, rate limit 저장소로 활용 가능 |
-| 회원 상태 | `MemberStatus` 없음 | domain, JPA, 테스트 추가 필요 |
-| 로그인 실패 횟수 | 필드 없음 | domain invariant와 JPA 컬럼 추가 필요 |
-| 인증 버전 | `authVersion` 없음 | access token 무효화 기준 필드 추가 필요 |
+| 회원 상태 | `MemberStatus` 존재 | 로그인/refresh 흐름에서 상태 검증 연결 필요 |
+| 로그인 실패 횟수 | 필드 존재 | 로그인 실패 유스케이스 연결 필요 |
+| 인증 버전 | `authVersion` 존재 | access token 무효화 검증 연결 필요 |
 | refresh token 저장소 | 없음 | 신규 auth 세션 Aggregate 또는 저장 포트 필요 |
-| 외부 memberId 입력 | cart, order, coupon API에 존재 | 인증 도입 후 단계적으로 SecurityContext 기반으로 전환 |
+| 외부 memberId 입력 | cart, order, coupon 고객 API에서 제거됨 | interfaces 계층이 인증 principal의 memberId를 command에 주입 |
 | 계층 규칙 | application은 infrastructure를 직접 참조할 수 없음 | token/cache/rate-limit은 domain port + infrastructure adapter로 둔다 |
 
 ## 3. 구현 원칙
@@ -274,31 +274,38 @@
 
 ### 7단계: 기존 API의 memberId 제거와 인가 적용
 
+상태: 2026-07-04 기준 기존 고객 API 경계 정리 구현 완료.
+
 작업:
 
 - cart API
-  - 요청 body/query의 `memberId` 제거
-  - 인증된 memberId를 command에 주입
+  - 요청 body/query의 `memberId` 제거 완료
+  - 인증된 memberId를 command에 주입 완료
   - checkout도 인증된 memberId 기준으로 수행
 - order API
-  - 주문 생성 요청의 `memberId` 제거
-  - 회원별 주문 조회는 `/api/v1/orders/me` 또는 기존 경로에서 인증 회원 기준으로 전환
-  - 주문 취소 시 본인 주문인지 확인
+  - 주문 생성 요청의 `memberId` 제거 완료
+  - 기존 `GET /api/v1/orders`를 내 주문 목록으로 유지하고 인증 회원 기준으로 전환
+  - 주문 상세 조회와 주문 취소는 본인 주문인지 확인
+  - 다른 회원 주문은 현재 ErrorType 정책과 리소스 은닉 목적에 맞춰 `NOT_FOUND`로 응답
 - coupon API
-  - 쿠폰 발급과 회원 쿠폰 조회에서 인증 회원 기준 적용
+  - 쿠폰 발급은 요청 body의 `memberId`를 제거하고 인증 회원 기준 적용
+  - 회원 쿠폰 조회는 `/api/v1/coupons/me`로 전환
+  - 주문 쿠폰 사용은 인증 memberId가 `OrderPlaceCommand`로 들어가 본인 쿠폰만 사용하도록 검증
 - admin API
-  - 상품/브랜드/쿠폰 정책/회원 상태 변경 API에 `ADMIN` 권한 적용
-- 기존 memberId 기반 API는 필요하면 deprecated 기간을 둔다
+  - 상품 등록/상태 변경, SKU 할인/가격/재고 변경, 브랜드 등록/수정/상태 변경, 카테고리 등록/수정/상태 변경/삭제, 쿠폰 정책 생성을 `/api/v1/admin/**` 경로로 분리
+  - `/api/v1/admin/**`는 `ADMIN` 권한만 허용
+- 기존 memberId 기반 고객 API는 별도 deprecated 경로 없이 제거
 
 검증:
 
 - controller 테스트 갱신
   - body/query memberId 없이 동작
   - 다른 회원 리소스 접근 불가
-  - USER가 admin API 접근 시 403
-  - ADMIN이 admin API 접근 가능
+  - USER가 `/api/v1/admin/**` 접근 시 403
+  - ADMIN이 `/api/v1/admin/**` 접근 가능
 - application 테스트
-  - 주문 취소 소유권 검증
+  - 주문 상세/취소 소유권 검증
+  - 본인 쿠폰만 주문에 사용 가능
   - 카트는 인증 회원의 카트만 조회·변경
 - ArchUnit
   - interfaces가 domain/infrastructure를 직접 참조하지 않음
@@ -347,9 +354,9 @@
 2. refresh session 저장소와 token issuer 구현
 3. 로그인·refresh·logout API 구현
 4. SecurityFilterChain과 인증 스냅샷 검증 연결
-5. cart API부터 memberId 제거
-6. order, coupon API로 memberId 제거 확대
-7. admin API 권한 적용
+5. cart API부터 memberId 제거 (완료)
+6. order, coupon API로 memberId 제거 확대 (완료)
+7. admin API를 `/api/v1/admin/**`로 분리하고 권한 적용 (완료)
 8. 감사 로그와 rate limit 강화
 
 이 순서를 추천하는 이유는 인증 도메인 상태가 먼저 안정되어야 token과 API 경계를 안전하게 얹을 수 있기 때문이다.
@@ -375,14 +382,20 @@
 계획 작성과 동시에 다음 검증을 수행했다.
 
 - `apps/commerce-api/build.gradle.kts` 확인
-  - 현재 `spring-security-crypto`만 있고 보안 웹/JWT 의존성은 없음
+  - 현재 `spring-boot-starter-security`, OAuth2 Resource Server, `spring-security-crypto` 의존성이 있음
 - `modules/redis` 설정 확인
   - `RedisTemplate<String, String>` 사용 가능
 - 회원 도메인/JPA 확인
-  - `MemberStatus`, `loginFailureCount`, `authVersion` 필드 없음
+  - `MemberStatus`, `loginFailureCount`, `authVersion` 필드 존재
 - `memberId` 외부 입력 범위 확인
-  - cart, order, coupon interfaces와 테스트에서 `memberId`를 받고 있음
+  - cart, order, coupon 고객 API는 요청 body/query/path의 `memberId`를 사용하지 않음
+  - interfaces 계층이 인증 principal의 memberId를 application command로 전달
+- 공개/보호/관리자 API 경계 확인
+  - 상품 목록/상세, 브랜드 상세, 카테고리 트리/상세, Swagger/OpenAPI, actuator health, 회원가입, 로그인/refresh 예정 경로는 공개
+  - cart/order/coupon 고객 API는 인증 필요
+  - 상품·SKU·브랜드·카테고리·쿠폰 정책 관리 API는 `/api/v1/admin/**`로 분리하고 `ADMIN`만 허용
 - 아키텍처 룰 확인
   - application은 infrastructure를 직접 참조하면 안 되므로 token/cache/rate-limit은 port/adapter로 분리 필요
 
-문서 작성 작업이라 코드 테스트는 실행하지 않았다.
+초기 계획 작성 당시에는 코드 테스트를 실행하지 않았다.
+이후 API 경계 정리 구현에서는 관련 controller/security/application 테스트를 추가·갱신했다.

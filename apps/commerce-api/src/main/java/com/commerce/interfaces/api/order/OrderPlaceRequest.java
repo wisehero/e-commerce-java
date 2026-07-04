@@ -11,9 +11,6 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
 public record OrderPlaceRequest(
-    @NotNull(message = "주문자는 필수입니다.")
-    Long memberId,
-
     @NotEmpty(message = "주문 항목은 최소 1개여야 합니다.")
     @Valid
     List<LineRequest> lines,
@@ -24,7 +21,7 @@ public record OrderPlaceRequest(
     Long couponId
 ) {
 
-    public OrderPlaceCommand toCommand() {
+    public OrderPlaceCommand toCommand(Long memberId) {
         return new OrderPlaceCommand(
             memberId,
             lines.stream().map(LineRequest::toCommand).toList(),

@@ -22,9 +22,10 @@ public class OrderQueryUseCase {
     private final OrderRepository orderRepository;
 
     @Transactional(readOnly = true)
-    public OrderInfo getById(Long orderId) {
+    public OrderInfo getById(Long memberId, Long orderId) {
         Order order = orderRepository.findById(orderId)
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 주문입니다."));
+        ensureOwner(order, memberId);
         return OrderInfo.from(order);
     }
 
@@ -36,5 +37,11 @@ public class OrderQueryUseCase {
             orders.items().stream().map(OrderInfo::from).toList(),
             orders.totalCount(), orders.page(), orders.size()
         );
+    }
+
+    private void ensureOwner(Order order, Long memberId) {
+        if (!order.getMemberId().equals(memberId)) {
+            throw new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 주문입니다.");
+        }
     }
 }

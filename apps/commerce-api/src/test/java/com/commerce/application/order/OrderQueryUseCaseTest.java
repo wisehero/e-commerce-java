@@ -29,6 +29,7 @@ import com.commerce.support.page.PageResult;
 class OrderQueryUseCaseTest {
 
     private static final Long MEMBER_ID = 1L;
+    private static final Long OTHER_MEMBER_ID = 2L;
     private static final Long ORDER_ID = 1000L;
 
     @Mock
@@ -53,7 +54,7 @@ class OrderQueryUseCaseTest {
             given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(order()));
 
             // when
-            OrderInfo info = useCase.getById(ORDER_ID);
+            OrderInfo info = useCase.getById(MEMBER_ID, ORDER_ID);
 
             // then
             assertThat(info.id()).isEqualTo(ORDER_ID);
@@ -67,7 +68,19 @@ class OrderQueryUseCaseTest {
             given(orderRepository.findById(ORDER_ID)).willReturn(Optional.empty());
 
             // when & then
-            assertThatThrownBy(() -> useCase.getById(ORDER_ID))
+            assertThatThrownBy(() -> useCase.getById(MEMBER_ID, ORDER_ID))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("다른 회원의 주문이면 NOT_FOUND 예외가 발생한다")
+        void should_throwNotFound_when_otherMemberOrder() {
+            // given
+            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(order()));
+
+            // when & then
+            assertThatThrownBy(() -> useCase.getById(OTHER_MEMBER_ID, ORDER_ID))
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.NOT_FOUND);
         }

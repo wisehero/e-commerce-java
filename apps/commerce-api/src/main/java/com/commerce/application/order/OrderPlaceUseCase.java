@@ -65,7 +65,8 @@ public class OrderPlaceUseCase {
         List<OrderLine> lines = prepared.stream().map(PreparedLine::orderLine).toList();
         List<DiscountableLine> discountableLines = prepared.stream().map(PreparedLine::discountableLine).toList();
 
-        AppliedCoupon appliedCoupon = orderCouponApplier.apply(command.couponId(), discountableLines);
+        AppliedCoupon appliedCoupon = orderCouponApplier.apply(command.couponId(), command.memberId(),
+            discountableLines);
 
         Order order = Order.place(command.memberId(), lines, appliedCoupon.discount(), command.couponId(),
             command.sourceCartId());

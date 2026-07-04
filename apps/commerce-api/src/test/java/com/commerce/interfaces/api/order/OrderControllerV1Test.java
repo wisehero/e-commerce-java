@@ -1,5 +1,6 @@
 package com.commerce.interfaces.api.order;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -17,15 +18,18 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.commerce.application.order.OrderCancelUseCase;
 import com.commerce.application.order.OrderInfo;
 import com.commerce.application.order.OrderLineInfo;
+import com.commerce.application.order.OrderPlaceCommand;
 import com.commerce.application.order.OrderPlaceUseCase;
 import com.commerce.application.order.OrderQueryUseCase;
 import com.commerce.domain.order.OrderStatus;
@@ -34,6 +38,7 @@ import com.commerce.support.error.ErrorType;
 import com.commerce.support.page.PageResult;
 
 @WebMvcTest(OrderControllerV1.class)
+@WithMockUser(username = "1", roles = "USER")
 class OrderControllerV1Test {
 
     @Autowired
@@ -59,13 +64,12 @@ class OrderControllerV1Test {
     class Place {
 
         @Test
-        @DisplayName("유효 요청이면 200 OK + 생성된 주문을 반환한다")
+        @DisplayName("memberId 없는 유효 요청이면 인증 회원 기준 command로 주문을 생성한다")
         void should_returnOrder_when_validRequest() throws Exception {
             given(orderPlaceUseCase.place(any())).willReturn(sampleOrder(OrderStatus.PAID));
 
             String body = """
                 {
-                  "memberId": 1,
                   "lockMode": "optimistic",
                   "lines": [ { "skuId": 10, "quantity": 2 } ]
                 }
@@ -80,6 +84,12 @@ class OrderControllerV1Test {
                 .andExpect(jsonPath("$.data.status").value("PAID"))
                 .andExpect(jsonPath("$.data.totalAmount").value(16000))
                 .andExpect(jsonPath("$.data.lines[0].lineAmount").value(16000));
+
+            ArgumentCaptor<OrderPlaceCommand> captor = ArgumentCaptor.forClass(OrderPlaceCommand.class);
+            then(orderPlaceUseCase).should().place(captor.capture());
+            assertThat(captor.getValue().memberId()).isEqualTo(1L);
+            assertThat(captor.getValue().lines()).hasSize(1);
+            assertThat(captor.getValue().lockMode()).isEqualTo("optimistic");
         }
 
         @Test
@@ -87,7 +97,6 @@ class OrderControllerV1Test {
         void should_return400_when_linesEmpty() throws Exception {
             String body = """
                 {
-                  "memberId": 1,
                   "lockMode": "optimistic",
                   "lines": []
                 }
@@ -108,7 +117,6 @@ class OrderControllerV1Test {
         void should_return400_when_lockModeBlank() throws Exception {
             String body = """
                 {
-                  "memberId": 1,
                   "lockMode": "",
                   "lines": [ { "skuId": 10, "quantity": 2 } ]
                 }
@@ -131,7 +139,6 @@ class OrderControllerV1Test {
 
             String body = """
                 {
-                  "memberId": 1,
                   "lockMode": "optimistic",
                   "lines": [ { "skuId": 10, "quantity": 2 } ]
                 }
@@ -154,14 +161,26 @@ class OrderControllerV1Test {
         @Test
         @DisplayName("200 OK + 취소된 주문을 반환한다")
         void should_returnCancelledOrder_when_cancel() throws Exception {
-            given(orderCancelUseCase.cancel(1000L)).willReturn(sampleOrder(OrderStatus.CANCELLED));
+            given(orderCancelUseCase.cancel(1L, 1000L)).willReturn(sampleOrder(OrderStatus.CANCELLED));
 
             mockMvc.perform(post("/api/v1/orders/1000/cancel"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.result").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.status").value("CANCELLED"));
 
-            then(orderCancelUseCase).should().cancel(1000L);
+            then(orderCancelUseCase).should().cancel(1L, 1000L);
+        }
+
+        @Test
+        @DisplayName("다른 회원 주문이면 404 + FAIL")
+        void should_return404_when_cancelOtherMemberOrder() throws Exception {
+            given(orderCancelUseCase.cancel(1L, 1000L))
+                .willThrow(new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 주문입니다."));
+
+            mockMvc.perform(post("/api/v1/orders/1000/cancel"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.meta.result").value("FAIL"))
+                .andExpect(jsonPath("$.meta.message").value("존재하지 않는 주문입니다."));
         }
     }
 
@@ -172,18 +191,20 @@ class OrderControllerV1Test {
         @Test
         @DisplayName("200 OK + 주문을 반환한다")
         void should_returnOrder_when_found() throws Exception {
-            given(orderQueryUseCase.getById(1000L)).willReturn(sampleOrder(OrderStatus.PAID));
+            given(orderQueryUseCase.getById(1L, 1000L)).willReturn(sampleOrder(OrderStatus.PAID));
 
             mockMvc.perform(get("/api/v1/orders/1000"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.result").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.id").value(1000));
+
+            then(orderQueryUseCase).should().getById(1L, 1000L);
         }
 
         @Test
         @DisplayName("존재하지 않으면 404 + FAIL")
         void should_return404_when_notFound() throws Exception {
-            given(orderQueryUseCase.getById(anyLong()))
+            given(orderQueryUseCase.getById(anyLong(), anyLong()))
                 .willThrow(new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 주문입니다."));
 
             mockMvc.perform(get("/api/v1/orders/999"))
@@ -201,29 +222,23 @@ class OrderControllerV1Test {
         @Test
         @DisplayName("200 OK + 페이지 목록을 반환한다")
         void should_returnPage_when_getByMember() throws Exception {
-            given(orderQueryUseCase.getByMember(anyLong(), anyInt(), anyInt()))
+            given(orderQueryUseCase.getByMember(1L, 0, 20))
                 .willReturn(new PageResult<>(List.of(sampleOrder(OrderStatus.PAID)), 1, 0, 20));
 
-            mockMvc.perform(get("/api/v1/orders").param("memberId", "1"))
+            mockMvc.perform(get("/api/v1/orders"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.meta.result").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.items[0].id").value(1000))
                 .andExpect(jsonPath("$.data.totalCount").value(1))
                 .andExpect(jsonPath("$.data.hasNext").value(false));
-        }
 
-        @Test
-        @DisplayName("memberId가 없으면 400")
-        void should_return400_when_memberIdMissing() throws Exception {
-            mockMvc.perform(get("/api/v1/orders"))
-                .andExpect(status().isBadRequest());
+            then(orderQueryUseCase).should().getByMember(1L, 0, 20);
         }
 
         @Test
         @DisplayName("page가 정수가 아니면 400 — 타입 불일치도 BAD_REQUEST로 잡고 UseCase 미호출")
         void should_return400_when_pageNotInteger() throws Exception {
             mockMvc.perform(get("/api/v1/orders")
-                    .param("memberId", "1")
                     .param("page", "abc"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.meta.result").value("FAIL"))

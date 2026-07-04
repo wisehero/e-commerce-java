@@ -33,13 +33,14 @@ public class OrderCancelUseCase {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
-    public OrderInfo cancel(Long orderId) {
+    public OrderInfo cancel(Long memberId, Long orderId) {
         AtomicBoolean wasPaid = new AtomicBoolean(false);
 
         // Txn: 취소(상태 전이) + 재고 복원
         Order cancelled = transactionTemplate.execute(status -> {
             Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 주문입니다."));
+            ensureOwner(order, memberId);
             wasPaid.set(order.getStatus() == OrderStatus.PAID);
             order.cancel();
             orderCompensationHelper.restore(order);
@@ -51,5 +52,11 @@ public class OrderCancelUseCase {
             paymentGateway.refund(cancelled.getId(), cancelled.getPayableAmount());
         }
         return OrderInfo.from(cancelled);
+    }
+
+    private void ensureOwner(Order order, Long memberId) {
+        if (!order.getMemberId().equals(memberId)) {
+            throw new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 주문입니다.");
+        }
     }
 }

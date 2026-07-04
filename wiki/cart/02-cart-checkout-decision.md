@@ -1,6 +1,6 @@
 # 카트 체크아웃 설계 결정
 
-작성: 2026-07-04 · 상태: 향후 구현 권장
+작성: 2026-07-04 · 상태: 구현 완료
 
 ## 1. 배경
 
@@ -111,12 +111,26 @@ CartCheckoutUseCase
 
 ## 6. 현재 상태
 
-현재 구현은 아직 서버 체크아웃 API를 제공하지 않는다.
-
-현재는 주문 성공 후 클라이언트가 다음 API를 별도로 호출해야 카트가 정리된다.
+현재 구현은 서버 체크아웃 API를 제공한다.
 
 ```text
-DELETE /api/v1/carts?memberId={memberId}
+POST /api/v1/carts/checkout
 ```
 
-따라서 현재 데이터만으로는 주문이 어떤 카트에서 전환되었는지 확인할 수 없다.
+요청은 현재 전체 체크아웃 기준이다.
+
+```text
+memberId
+lockMode
+couponId(optional)
+```
+
+처리 흐름은 application 계층의 `CartCheckoutUseCase`가 담당한다.
+
+- `memberId` 기준으로 Cart를 조회한다.
+- 카트가 없으면 `NOT_FOUND`, 비어 있으면 `BAD_REQUEST`로 거부한다.
+- CartLine을 기존 주문 생성 입력으로 변환하고 `sourceCartId`를 포함해 주문을 생성한다.
+- 주문이 결제 성공으로 `PAID`가 된 경우에만 카트를 비운다.
+- 결제 실패로 주문이 `CANCELLED`가 되거나 주문 생성이 실패하면 카트는 유지한다.
+
+카트 기반 주문은 `orders.source_cart_id`로 어떤 카트에서 전환되었는지 추적한다.

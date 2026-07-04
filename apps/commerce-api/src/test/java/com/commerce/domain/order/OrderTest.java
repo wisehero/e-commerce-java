@@ -48,6 +48,16 @@ class OrderTest {
         }
 
         @Test
+        @DisplayName("카트 기반 주문은 sourceCartId를 보관한다")
+        void should_keepSourceCartId_when_cartSourceOrder() {
+            // when
+            Order order = Order.place(MEMBER_ID, List.of(line(10L, 1000L, 1)), Money.ZERO, null, 100L);
+
+            // then
+            assertThat(order.getSourceCartId()).isEqualTo(100L);
+        }
+
+        @Test
         @DisplayName("주문자가 null이면 BAD_REQUEST 예외가 발생한다")
         void should_throwException_when_memberIdNull() {
             // when & then

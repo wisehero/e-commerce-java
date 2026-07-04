@@ -12,11 +12,17 @@ public record OrderInfo(
     long totalAmount,
     long discountAmount,
     long payableAmount,
-    Long usedCouponId
+    Long usedCouponId,
+    Long sourceCartId
 ) {
 
     public OrderInfo(Long id, Long memberId, String status, List<OrderLineInfo> lines, long totalAmount) {
-        this(id, memberId, status, lines, totalAmount, 0, totalAmount, null);
+        this(id, memberId, status, lines, totalAmount, 0, totalAmount, null, null);
+    }
+
+    public OrderInfo(Long id, Long memberId, String status, List<OrderLineInfo> lines, long totalAmount,
+        long discountAmount, long payableAmount, Long usedCouponId) {
+        this(id, memberId, status, lines, totalAmount, discountAmount, payableAmount, usedCouponId, null);
     }
 
     public static OrderInfo from(Order order) {
@@ -28,7 +34,8 @@ public record OrderInfo(
             order.getTotalAmount().amount(),
             order.getDiscountAmount().amount(),
             order.getPayableAmount().amount(),
-            order.getUsedCouponId()
+            order.getUsedCouponId(),
+            order.getSourceCartId()
         );
     }
 }

@@ -67,7 +67,8 @@ public class OrderPlaceUseCase {
 
         AppliedCoupon appliedCoupon = orderCouponApplier.apply(command.couponId(), discountableLines);
 
-        Order order = Order.place(command.memberId(), lines, appliedCoupon.discount(), command.couponId());
+        Order order = Order.place(command.memberId(), lines, appliedCoupon.discount(), command.couponId(),
+            command.sourceCartId());
         Order saved = orderRepository.save(order);
         orderCouponApplier.markUsed(appliedCoupon, command.memberId(), saved.getId());
         return saved;

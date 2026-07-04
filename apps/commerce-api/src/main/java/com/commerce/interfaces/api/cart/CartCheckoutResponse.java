@@ -1,11 +1,11 @@
-package com.commerce.interfaces.api.order;
+package com.commerce.interfaces.api.cart;
 
 import java.util.List;
 
 import com.commerce.application.order.OrderInfo;
 import com.commerce.application.order.OrderLineInfo;
 
-public record OrderResponse(
+public record CartCheckoutResponse(
     Long id,
     Long memberId,
     String status,
@@ -17,8 +17,8 @@ public record OrderResponse(
     Long sourceCartId
 ) {
 
-    public static OrderResponse from(OrderInfo info) {
-        return new OrderResponse(
+    public static CartCheckoutResponse from(OrderInfo info) {
+        return new CartCheckoutResponse(
             info.id(),
             info.memberId(),
             info.status(),

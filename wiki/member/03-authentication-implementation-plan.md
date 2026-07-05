@@ -2,6 +2,9 @@
 
 작성: 2026-07-04 · 상태: 단계별 구현 진행 중
 
+현재 코드 기준으로 1단계의 보안 의존성·기본 경계, 2단계의 회원 등급·상태·실패 횟수·인증 버전 모델링, 7단계의 기존 고객 API memberId 제거와 관리자 경로 분리는 완료되어 있다.
+3~6단계의 refresh session, token issuer, Auth API, 인증 스냅샷 캐시, rate limit, 감사 로그는 아직 구현되지 않았다.
+
 ## 1. 목표
 
 운영 수준의 회원 인증·인가를 구현한다.
@@ -42,12 +45,14 @@
 - interfaces는 인증된 사용자 정보를 application command로 변환한다.
 - application이 인증 흐름과 트랜잭션 경계를 가진다.
 - infrastructure가 JWT 서명, refresh token 저장, Redis 캐시, rate limit을 구현한다.
-- JPA 연관관계 어노테이션은 사용하지 않는다.
+- JPA 엔티티 연관관계 어노테이션은 사용하지 않는다.
 - 클라이언트가 전달한 `memberId`는 내 리소스 접근 판단에 사용하지 않는다.
 
 ## 4. 단계별 구현 계획과 검증
 
 ### 1단계: 보안 의존성과 기본 설정 추가
+
+상태: 2026-07-04 기준 완료. 단, `/api/v1/auth/login`과 `/api/v1/auth/refresh`는 공개 경로로 예약되어 있을 뿐 실제 Controller는 아직 없다.
 
 작업:
 
@@ -65,8 +70,8 @@
 초기 공개 API:
 
 - `POST /api/v1/members`
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/login` (공개 경로로 예약, Controller는 아직 없음)
+- `POST /api/v1/auth/refresh` (공개 경로로 예약, Controller는 아직 없음)
 - Swagger/OpenAPI 경로
 - actuator health 경로가 있다면 health만 공개
 
@@ -81,6 +86,8 @@
 
 ### 2단계: Member 상태와 인증 버전 모델링
 
+상태: 2026-07-04 기준 완료. `MemberGrade`, `MemberStatus`, `loginFailureCount`, `authVersion` 필드와 JPA 매핑, 도메인 테스트·영속성 테스트가 존재한다.
+
 작업:
 
 - `MemberStatus` 추가
@@ -89,19 +96,21 @@
   - `SUSPENDED`
   - `WITHDRAWN`
 - `Member`에 필드 추가
+  - `grade`
   - `status`
   - `loginFailureCount`
   - `authVersion`
 - 도메인 메서드 추가
   - `recordLoginFailure()`
   - `resetLoginFailures()`
-  - `lockByLoginFailures()`
+  - `lockByLoginFailures()` private helper
   - `suspend()`
   - `withdraw()`
   - `unlock()`
   - `increaseAuthVersion()`
   - `ensureLoginAllowed()`
-- 신규 가입 회원은 `ACTIVE`, 실패 횟수 0, 인증 버전 1로 시작
+  - `changeGrade(MemberGrade)`
+- 신규 가입 회원은 `BRONZE`, `ACTIVE`, 실패 횟수 0, 인증 버전 1로 시작
 - `MemberJpaEntity`와 repository 매핑 갱신
 
 검증:
@@ -114,7 +123,7 @@
   - 로그인 성공 시 실패 횟수 초기화
   - 상태 변경 시 `authVersion` 증가
 - persistence 테스트
-  - `status`, `loginFailureCount`, `authVersion` 저장·복원
+  - `grade`, `status`, `loginFailureCount`, `authVersion` 저장·복원
 - `./gradlew :apps:commerce-api:test --tests 'com.commerce.domain.member.*'`
 - `./gradlew :apps:commerce-api:test --tests 'com.commerce.infrastructure.member.*'`
 
@@ -386,7 +395,7 @@
 - `modules/redis` 설정 확인
   - `RedisTemplate<String, String>` 사용 가능
 - 회원 도메인/JPA 확인
-  - `MemberStatus`, `loginFailureCount`, `authVersion` 필드 존재
+  - `MemberGrade`, `MemberStatus`, `loginFailureCount`, `authVersion` 필드 존재
 - `memberId` 외부 입력 범위 확인
   - cart, order, coupon 고객 API는 요청 body/query/path의 `memberId`를 사용하지 않음
   - interfaces 계층이 인증 principal의 memberId를 application command로 전달

@@ -16,7 +16,7 @@ Use this skill when the user asks to commit local changes in this project, inclu
 3. 변경된 파일들의 **공통 의도(why)** 를 한 줄로 요약
 4. 컨벤션에 따라 메시지 작성:
    - type: feat/fix/refactor/perf/wiki/test/build/chore/style/init 중 하나
-   - scope: 변경 영향이 가장 큰 도메인명 또는 모듈명 (괄호 안)
+   - scope: 변경 영향이 가장 큰 도메인명, 앱 모듈명, 인프라 모듈명, 횡단 관심사명 (괄호 안)
    - subject: 한국어, 50자 이내, 명령형, 마침표 없음
    - 복잡한 변경이면 body로 why 부연
 5. 작성한 메시지를 채팅에 먼저 보여주고 사용자 확인 대기

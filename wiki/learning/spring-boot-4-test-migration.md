@@ -23,7 +23,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 class MemberControllerV1Test {
 
     @MockitoBean                                  // ← @MockBean 아님
-    private MemberSignUpFacade memberSignUpFacade;
+    private MemberSignUpUseCase memberSignUpUseCase;
     // ...
 }
 ```
@@ -108,7 +108,7 @@ String json = objectMapper.writeValueAsString(request);
 
 ### 본 프로젝트 사례
 
-- `supports/jackson/.../JacksonConfig.java` — `tools.jackson.*` 임포트
+- `supports/jackson/src/main/java/com/commerce/config/jackson/JacksonConfig.java` — `tools.jackson.*` 임포트
 - `interfaces/api/ApiControllerAdvice.java` — `tools.jackson.databind.exc.InvalidFormatException` 임포트
 - 일부 enum 관련 feature도 위치가 바뀌었다: `DeserializationFeature.READ_ENUMS_USING_TO_STRING` → `EnumFeature.READ_ENUMS_USING_TO_STRING`
 
@@ -160,6 +160,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.commerce.application.member.MemberSignUpUseCase;
+
 import tools.jackson.databind.ObjectMapper;
 
 @WebMvcTest(MemberControllerV1.class)
@@ -167,7 +169,7 @@ class MemberControllerV1Test {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
-    @MockitoBean private MemberSignUpFacade facade;
+    @MockitoBean private MemberSignUpUseCase memberSignUpUseCase;
 
     @Test
     void should_returnApiResponseSuccess_when_validRequest() throws Exception {

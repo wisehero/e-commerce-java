@@ -1,6 +1,6 @@
 # 쿠폰(Coupon) 도메인 스펙 v2
 
-작성: 2026-06-14 · v2 증분: 2026-06-18 · 상태: **v1 구현 완료**, **v2 설계 합의 완료**(§0.1 원장 #1~#27, §0.1b 원장 #28~#39).
+작성: 2026-06-14 · v2 증분: 2026-06-18 · 상태: **v1 구현 완료**, **v2 구현 완료**(§0.1 원장 #1~#27, §0.1b 원장 #28~#39, #40~#42).
 
 주문 다음으로 만드는 도메인. 본 문서는 **결정의 기록**이다. 무엇을 골랐는지가 아니라 *무엇 대신, 왜* 골랐는지를 남긴다.
 이 도메인은 [`order` 스펙](../order/order-domain-spec.md)이 "주문 총액 = 라인 합 = 청구액"으로 닫아둔 금액 모델을 할인 도입으로 분기시키고(§8), 2단계 결제 흐름(order §4)에 쿠폰 소비/복원을 끼워 넣는다(§5·§6).
@@ -9,9 +9,8 @@
 >
 > **v2 후속(2026-06-18, 카테고리 도메인 도입 이후).** 최초 v2 합의는 `CATEGORY` scope를 보류했다(#31, 당시 카테고리 도메인 부재). 이후 계층형 카테고리 도메인(`domain/category`, depth 1~3, `parentId`, `findSelfAndDescendantIds`)이 생겨 전제가 바뀌었고, `CATEGORY` scope를 **서브트리 매칭 + 주문 시점 신선 해소**로 추가했다(원장 #40~#42). #31은 갱신됨(보류 해제).
 
-> **읽는 법.** 본문의 모든 결정은 두 갈래 중 하나다.
-> **[확정]** = grill 세션에서 합의됨(§0.1 원장에 대안·근거와 함께 등재). **[추정]** = 내가 스펙화하며 채운 설계로, 합의된 적 없음 → 구현 전 확정 필요(§0.2).
-> 본문에서 `[추정]` 태그가 붙은 것은 §0.2 소관이다. 태그 없는 서술은 [확정] 원장을 구조로 풀어쓴 것이다.
+> **읽는 법.** 본문의 결정 원장은 설계 의사결정 기록이고, 현재 코드는 v2까지 반영한다.
+> 초기 문서의 추정 항목은 구현 과정에서 실제 코드로 확정된 컨벤션으로 정리했다(§0.2).
 
 ## 0. 범위
 
@@ -52,7 +51,7 @@
 | 16 | 적용 자격 범위 | **전체 주문 + 최소주문금액** | 브랜드 한정, 상품/SKU 한정 | #1과 일관(라인 매칭 회피) |
 | 17 | 정률 반올림 | **버림(floor)** | 반올림, 올림 | 정수 나눗셈으로 자연스럽게 버림. 초과 할인 없음, 국내 관례 |
 | 18 | 할인 > 총액 | **클램프**(청구액 ≥ 0) | 거부(에러) | UX + Money 비음수 invariant 유지 |
-| 19 | 정률 cap | **선택(nullable)** | 필수 | 무제한/한도 둘 다 표현 |
+| 19 | 할인 cap | **선택(nullable)** | 필수 | 무제한/한도 둘 다 표현. 주 사용처는 정률이지만 현재 `DiscountRule`은 할인 유형과 무관하게 raw 할인액에 cap을 적용한다 |
 | 20 | 계산·검증 위치 | **IssuedCoupon 도메인 메서드 → `DiscountRule` 위임(#24)** | 도메인 Service, UseCase | 도메인이 invariant 소유. 스냅샷이라 쿠폰이 자기 규칙을 스스로 안다 |
 | 21 | 0원 결제 | **게이트웨이 스킵 → PAID** | 0원도 호출 | 0원 결제 무의미 |
 | 22 | ErrorType | **기존 4종 재사용** | 쿠폰 전용 추가 | 프로젝트 현 컨벤션 일관 |
@@ -89,17 +88,17 @@ v1 원장의 #1·#16(주문 전체 한정)을 반전하지 않고 확장한다. 
 | 41 | 카테고리 매칭 | **서브트리 일치**(대상 + 모든 하위) | 평면(정확) 일치 | 상품은 리프(depth 3) 카테고리에만 매임(`ProductRegisterUseCase`의 `isLeaf()` 강제) → 비리프 평면 매칭은 0개. `findSelfAndDescendantIds`가 이미 "상위 검색 시 하위 포함" 의도로 존재. 리프 대상은 서브트리=자기자신이라 평면을 포함 |
 | 42 | 서브트리 해소 시점 | **주문(사용) 시점 신선 해소** | 발급 시점 서브트리 박제 | 카테고리 멤버십은 "무엇이 그 카테고리에 속하나"라는 구조적 사실 → 사용 시점 현재 상태가 옳음. 발급 후 추가된 하위·상품도 포함. 할인규칙 박제(#36)와는 다른 관심사라 비모순. `IssuedCoupon`은 대상 categoryId만 박제, 멤버십은 `findSelfAndDescendantIds`로 주문 시 해소 |
 
-### 0.2 추정 [추정] — 컨벤션 수준, 구현 시 확정
+### 0.2 구현 확정된 컨벤션
 
-설계 판단(VO 추출·minOrderAmount 위치·정률 정밀도·긴급 중단)은 grill로 닫혀 원장 #24~#27로 옮겼다. 여기 남은 건 명칭·매핑 수준의 낮은 위험 추정뿐이다.
+설계 판단(VO 추출·minOrderAmount 위치·정률 정밀도·긴급 중단)은 grill로 닫혀 원장 #24~#27로 옮겼다. 아래 명칭·매핑 수준의 항목은 현재 코드에 반영된 구현 컨벤션이다.
 
-| 항목 | 추정안 | 위험도 | 비고 |
+| 항목 | 구현 컨벤션 | 위험도 | 비고 |
 |---|---|---|---|
-| 영속 매핑 | `DiscountRule` `@Embedded`, UNIQUE(policy_id, member_id) | 낮음 | JPA 연관 어노테이션 없음 유지 |
+| 영속 매핑 | `DiscountRuleEmbeddable`, UNIQUE(policy_id, member_id) | 낮음 | JPA 연관 어노테이션 없음 유지 |
 | API 표면 | `/api/v1/...` 경로, `CouponControllerV1` 등 | 낮음 | order(`/api/v1/orders`) 컨벤션 유도 |
 | 팩토리·필드명 | `create`/`issue`/`reconstitute`, `issuableFrom/Until`, `usedOrderId`, Money 확장명 | 낮음 | order(`place`/`reconstitute`) 컨벤션 유도 |
-| [v2] scope 매핑 | `ApplicabilityScope` `@Embedded`(type enum + targetId Long nullable), `coupon_policy`·`issued_coupon` 양쪽 | 낮음 | 연관 어노테이션 없음. WHOLE이면 targetId=null. BRAND/PRODUCT/CATEGORY는 각 대상 ID |
-| [v2] 등급 override 매핑 | `gradeOverrides`를 `@ElementCollection` + `@MapKeyEnumerated`(MemberGrade) + `@Embedded DiscountRule`, `coupon_policy_grade_override` 테이블 | 낮음 | Aggregate 내부 value 컬렉션, `ddd.md §5` 예외 허용 범위 |
+| [v2] scope 매핑 | `ApplicabilityScopeEmbeddable`(type enum + targetId Long nullable), `coupon_policies`·`issued_coupons` 양쪽 | 낮음 | 연관 어노테이션 없음. WHOLE이면 targetId=null. BRAND/PRODUCT/CATEGORY는 각 대상 ID |
+| [v2] 등급 override 매핑 | `gradeOverrides`를 `@ElementCollection` + `@MapKeyEnumerated`(MemberGrade) + `DiscountRuleEmbeddable`, `coupon_policy_grade_overrides` 테이블 | 낮음 | Aggregate 내부 value 컬렉션, `ddd.md §5` 예외 허용 범위 |
 | [v2] MemberGrade 매핑 | `Member.grade` `@Enumerated(STRING)` 컬럼, 가입 기본값 `BRONZE` | 낮음 | member 도메인 변경. 기존 행 마이그레이션 기본 `BRONZE` |
 | [v2] DiscountableLine | coupon 도메인 중립 record(`amount`, `productId`, `brandId`, `categoryId`) | 낮음 | 영속 대상 아님(transient 계산 입력). `categoryId`는 상품의 리프 카테고리 |
 
@@ -123,11 +122,11 @@ v1 원장의 #1·#16(주문 전체 한정)을 반전하지 않고 확장한다. 
 |---|---|---|
 | type | `DiscountType` | `FIXED`(정액) / `RATE`(정률) |
 | value | long | FIXED=할인 원, RATE=할인 %(정수 1~100, #26) |
-| maxDiscountAmount | Money (nullable) | [확정 #19] 정률 cap. null=무제한 |
+| maxDiscountAmount | Money (nullable) | [확정 #19] 할인 cap. null=무제한. 현재 구현은 `FIXED`/`RATE` 모두 raw 할인액 계산 뒤 동일하게 적용한다 |
 | minOrderAmount | Money | [확정 #16·#25] 적용 최소 주문 금액(VO에 포함) |
 
 - invariant: `RATE`면 `value ∈ 1..100`, `FIXED`면 `value > 0`.
-- 행위: `calculateDiscount(Money lineTotal): Money`(§7). 불변·값 동등성.
+- 행위: `calculateDiscount(Money orderAmount): Money`(§7). 인자는 주문 전체 또는 scope 매칭 부분합이다. 불변·값 동등성.
 
 ### `ApplicabilityScope` (공유 Value Object) [v2]
 
@@ -140,8 +139,8 @@ v1 원장의 #1·#16(주문 전체 한정)을 반전하지 않고 확장한다. 
 
 - invariant: `WHOLE`이면 `targetId == null`, 그 외엔 `targetId != null`.
 - 행위 — 매칭은 두 형태다.
-  - **자족 매칭**(`WHOLE`/`BRAND`/`PRODUCT`): `matches(DiscountableLine line)` — `WHOLE`은 항상 true, `BRAND`는 `line.brandId == targetId`, `PRODUCT`는 `line.productId == targetId`.
-  - **서브트리 매칭**(`CATEGORY`, #41·#42): 대상 카테고리의 서브트리(자기 + 모든 하위) id 집합이 필요하다. 이 집합은 순수 VO가 가질 수 없으므로(카테고리 트리는 다른 Aggregate) **application이 주문 시점에 `findSelfAndDescendantIds(targetId)`로 해소해 공급**한다. 매칭은 `line.categoryId ∈ 해소집합`. `matches(line, resolvedCategoryIds)` 형태로 받는다 `[추정: 시그니처]`. 상품은 리프 카테고리에만 매이므로 `line.categoryId`는 리프 id다.
+  - **자족 매칭**(`WHOLE`/`BRAND`/`PRODUCT`): `matches(line, resolvedCategoryIds)`에서 `resolvedCategoryIds`를 무시한다. `WHOLE`은 항상 true, `BRAND`는 `line.brandId == targetId`, `PRODUCT`는 `line.productId == targetId`.
+  - **서브트리 매칭**(`CATEGORY`, #41·#42): 대상 카테고리의 서브트리(자기 + 모든 하위) id 집합이 필요하다. 이 집합은 순수 VO가 가질 수 없으므로(카테고리 트리는 다른 Aggregate) **application이 주문 시점에 `findSelfAndDescendantIds(targetId)`로 해소해 공급**한다. 매칭은 `line.categoryId ∈ 해소집합`이며, 구현 시그니처는 `matches(line, resolvedCategoryIds)`다. 상품은 리프 카테고리에만 매이므로 `line.categoryId`는 리프 id다.
 
 ### `CouponPolicy` (Root)
 
@@ -153,13 +152,13 @@ v1 원장의 #1·#16(주문 전체 한정)을 반전하지 않고 확장한다. 
 | discountRule | DiscountRule | [확정 #24] **기본 규칙**(등급 override 없을 때) |
 | gradeOverrides | Map\<MemberGrade, DiscountRule\> | [v2 #35·#38] 등급별 할인 규칙 override. 부분 맵, 비어 있으면 비차등 |
 | validDays | int | [확정 #13] 발급된 쿠폰의 유효일수 |
-| issuableFrom / issuableUntil | ZonedDateTime | 발급 가능 기간(캠페인 창). `[추정: 필드명]` |
+| issuableFrom / issuableUntil | ZonedDateTime | 발급 가능 기간(캠페인 창) |
 | maxIssueCount | long | [확정 #10·#11] 선착순 총량 |
 | issuedCount | long | 발급 누적. 조건부 원자 UPDATE 대상(§10) |
 | active | boolean | [확정 #27] 긴급 중단 스위치 |
 
 - invariant: `validDays > 0`, `maxIssueCount > 0`, `issuableFrom < issuableUntil`. [v2] `applicabilityScope != null`, `gradeOverrides`의 각 값도 유효 `DiscountRule`.
-- 팩토리: `create(...)`(id=null, issuedCount=0) / `reconstitute(...)`. `[추정: 명]`
+- 팩토리: `create(...)`(id=null, issuedCount=0) / `reconstitute(...)`.
 - 행위:
   - `assertIssuable(now)`(발급 가능 기간 검증). `issuedCount` 증가의 **원자성은 repository 조건부 UPDATE가 보장**(§10). 도메인은 비즈니스 규칙만 책임진다.
   - [v2] `resolveRuleFor(MemberGrade grade): DiscountRule` — `gradeOverrides.getOrDefault(grade, discountRule)`. 발급 시 단일 규칙으로 해소(#36·#38). scope는 등급과 무관하게 고정이라 해소 대상이 아니다.
@@ -176,11 +175,11 @@ v1 원장의 #1·#16(주문 전체 한정)을 반전하지 않고 확장한다. 
 | status | CouponStatus | [확정 #6·#8] `UNUSED` / `USED`(만료는 파생) |
 | issuedAt | ZonedDateTime | 발급 시각. 도메인 사실로 직접 보유 |
 | expiresAt | ZonedDateTime | [확정 #13·#14] **스냅샷**(= 발급일 + validDays, §9) |
-| usedOrderId | Long (nullable) | [확정 #9] 복원 가드용(§6). `[추정: 명]` |
+| usedOrderId | Long (nullable) | [확정 #9] 복원 가드용(§6) |
 
 - 팩토리: [v2] `issue(policy, memberId, grade, now)` — `policy.resolveRuleFor(grade)`로 규칙 확정 후 scope·규칙·expiresAt 스냅샷 / `reconstitute(...)`. 등급은 발급 시점에만 읽혀 박제되므로(#36), 발급 후 등급이 바뀌어도 이 쿠폰의 혜택·범위는 불변.
 - 행위 [확정 #20]:
-  - [v2] `calculateDiscount(List<DiscountableLine> lines, Set<Long> resolvedCategoryIds)` — `applicabilityScope`로 매칭 라인 필터 → 부분합 산출 → `discountRule`에 위임(#24·#32). `CATEGORY` scope일 때만 `resolvedCategoryIds`(application이 `findSelfAndDescendantIds`로 해소, #42)를 멤버십 판정에 쓰고, 그 외 scope는 무시한다 `[추정: 시그니처]`. 매칭 라인 0이면 `BAD_REQUEST`("적용 대상 상품이 없습니다", #34). `WHOLE`이면 전 라인이 매칭돼 v1 동작과 동일.
+  - [v2] `calculateDiscount(List<DiscountableLine> lines, Set<Long> resolvedCategoryIds)` — `applicabilityScope`로 매칭 라인 필터 → 부분합 산출 → `discountRule`에 위임(#24·#32). `CATEGORY` scope일 때만 `resolvedCategoryIds`(application이 `findSelfAndDescendantIds`로 해소, #42)를 멤버십 판정에 쓰고, 그 외 scope는 무시한다. 매칭 라인 0이면 `BAD_REQUEST`("적용 대상 상품이 없습니다", #34). `WHOLE`이면 전 라인이 매칭돼 v1 동작과 동일.
   - [v2] `use(memberId, lines, resolvedCategoryIds, now, orderId)` — 소유자·상태·만료 검증 + `calculateDiscount(...)`로 매칭·최소금액 검증 후 `UNUSED→USED` + `usedOrderId` 기록. 동시 중복 사용 차단의 **원자성은 repository 조건부 UPDATE**(§10).
   - `restore(orderId)` — `USED→UNUSED`(§6). scope·등급과 무관하게 통째 복원이라 v1 그대로.
 - `issuedAt`/`expiresAt`은 `BaseJpaEntity.createdAt`에 기대지 않고 쿠폰 도메인의 사실로 직접 보유한다.
@@ -213,7 +212,7 @@ restore()  : USED   → UNUSED       (결제 실패 보상 / 주문 취소)
 만료        : 저장 상태 아님 — expiresAt vs now로 파생(§9)
 ```
 
-[확정 #8] 만료를 저장 상태로 두지 않는다. 스케줄러가 없고, 상태만 믿으면 "만료일 지났지만 미전환" 창에서 사용됨. 사용 가드가 항상 `expires_at > now`를 함께 본다. 따라서 만료 일괄 전환 배치가 불필요하고, "만료된 쿠폰 목록"은 조회 시 날짜로 필터한다.
+[확정 #8] 만료를 저장 상태로 두지 않는다. 스케줄러가 없고, 상태만 믿으면 "만료일 지났지만 미전환" 창에서 사용됨. 사용 가드가 항상 `expires_at > now`를 함께 본다. 따라서 만료 일괄 전환 배치가 불필요하다. 현재 내 쿠폰 목록 API는 저장 상태(`UNUSED`/`USED`)로만 필터하고, 만료 여부는 조회 시점에 `expired` 응답 필드로 파생한다.
 
 ## 4. 발급 흐름 (선착순)
 
@@ -229,25 +228,25 @@ Txn: CouponPolicy.assertIssuable(now)     (발급 가능 기간 검증)
 
 - [v2 #36·#37] 등급은 **발급 시점에만** 읽힌다. `CouponIssueUseCase`가 `MemberRepository`로 회원을 로드해 `grade`를 얻고, 정책이 그 등급의 규칙(override ?? 기본)을 골라 박제. 등급은 주문 흐름엔 등장하지 않는다.
 - [확정 #12] **1인 1매**: `(policy_id, member_id)` UNIQUE. 동시 중복 발급도 DB가 차단.
-- [확정 #10·#11] **선착순 총량**: `UPDATE coupon_policy SET issued_count = issued_count + 1 WHERE id = :id AND issued_count < max_issue_count`. 0행이면 소진, 초과 발급을 원천 차단한다.
+- [확정 #10·#11] **선착순 총량**: `UPDATE coupon_policies SET issued_count = issued_count + 1 WHERE id = :id AND issued_count < max_issue_count`. 0행이면 소진, 초과 발급을 원천 차단한다.
 
 **1 Txn 정합성**: INSERT(유니크 가드)와 quota UPDATE(소진 가드)를 한 트랜잭션에 둔다. 어느 가드가 실패하든 예외 → 전체 롤백이므로, 순서와 무관하게 부분 효과(quota만 증가)가 남지 않는다. 유니크 위반은 도메인 예외(`CONFLICT`)로 변환해 롤백시킨다.
 
-**의식적 규칙 예외: 발급 Txn의 다중 Aggregate 수정** — `ddd.md §4`("1 Txn = 1 Aggregate")와 충돌하나 의식적 예외다(order Txn1이 SKU+Order를 묶은 것과 동일 성격). 발급은 `CouponPolicy`(카운트) + `IssuedCoupon`(생성)을 한 Txn에 묶어야 초과 발급을 막고, 외부 호출이 없어 락 점유가 짧다.
+**의식적 규칙 예외: 발급 Txn의 다중 Aggregate 수정** — `ddd.md §4` 기본 원칙("1 Txn = 1 Aggregate")의 문서화된 예외다(order Txn1이 SKU+Order를 묶은 것과 동일 성격). 발급은 `CouponPolicy`(카운트) + `IssuedCoupon`(생성)을 한 Txn에 묶어야 초과 발급을 막고, 외부 호출이 없어 락 점유가 짧다.
 
 ## 5. 사용 흐름 (주문 통합)
 
 [확정 #6] `OrderPlaceCommand`에 선택 입력 `couponId` 추가. 쿠폰 소비는 재고 차감과 동일 패턴으로 order §4의 2단계 흐름에 얹는다.
 
 ```
-Txn1: (기존) member·sku·product·brand 검증 + 라인 스냅샷 + 재고 차감
+Txn1: (기존) member·sku·product·brand 검증 + 라인 스냅샷 생성 + 재고 차감
       → couponId 있으면: IssuedCoupon 로드 + 소유자(memberId) 검증
       → [v2] 라인마다 이미 로드한 Product(brandId·categoryId)로 DiscountableLine(amount, productId, brandId, categoryId) 조립
       → [v2] CATEGORY scope면: categoryRepository.findSelfAndDescendantIds(targetId)로 서브트리 id 집합 해소 (#42)
       → discount = issuedCoupon.calculateDiscount(lines, resolvedCategoryIds)   ([v2] scope 매칭→부분합→할인, §7)
-      → Order.place(memberId, lines, discount, couponId)    (payableAmount 계산, §8)
+      → Order.place(memberId, lines, discount, couponId, sourceCartId?)    (payableAmount 계산, §8, 카트 체크아웃이면 출처 기록)
       → Order(PAYMENT_PENDING) 저장
-      → couponId 있으면: 저장된 orderId로 조건부 쿠폰 사용 UPDATE (§10, 0행이면 이미사용/만료 → BAD_REQUEST)
+      → couponId 있으면: 저장된 orderId와 memberId로 조건부 쿠폰 사용 UPDATE (§10, 0행이면 이미사용/만료 → BAD_REQUEST)
       → commit
 결제 호출   ← 트랜잭션 밖
    payableAmount == 0 이면 게이트웨이 스킵                    [확정 #21]
@@ -259,7 +258,7 @@ Txn2: 성공(또는 0원 스킵) → markPaid()
 - [v2 #33] `DiscountableLine`은 박제하지 않는다. `OrderLine`엔 brandId를 저장하지 않고, 매칭은 주문 시점에 이미 로드된 `Product`에서 즉석 조립한 입력으로만 한다. 할인 결과(할인액·청구액)는 `Order`에 박혀 영구 보존되므로 재계산이 필요 없다.
 - [v2 #34] scope에 매칭되는 라인이 없으면 `calculateDiscount`가 `BAD_REQUEST`("적용 대상 상품이 없습니다")로 거부 → Txn1 롤백. 조용히 0원 할인으로 통과시키지 않는다.
 - [확정 #21] **0원 결제**: 전액 할인으로 `payableAmount == 0`이면 결제 단계를 건너뛰고 Txn2에서 바로 `PAID`.
-- **의식적 규칙 예외: 사용 Txn의 다중 Aggregate 수정** — §4 발급과 같은 성격이다. Txn1이 `Order`(생성·청구액 확정)와 `IssuedCoupon`(사용 마킹)을 한 트랜잭션에 묶는다(`ddd.md §4` "1 Txn = 1 Aggregate"의 의식적 예외, order Txn1의 SKU+Order와 동형). 주문 청구액 ↔ 쿠폰 사용의 강한 일관성이 필요하고, 외부 결제 호출은 트랜잭션 밖이라 락 점유가 짧다. 쿠폰 사용 처리는 application 프로세스(`OrderCouponApplier`)가 오케스트레이션한다.
+- **의식적 규칙 예외: 사용 Txn의 다중 Aggregate 수정** — §4 발급과 같은 성격이다. Txn1이 `Order`(생성·청구액 확정)와 `IssuedCoupon`(사용 마킹)을 한 트랜잭션에 묶는다(`ddd.md §4` 기본 원칙의 문서화된 예외, order Txn1의 SKU+Order와 동형). 주문 청구액 ↔ 쿠폰 사용의 강한 일관성이 필요하고, 외부 결제 호출은 트랜잭션 밖이라 락 점유가 짧다. 쿠폰 사용 처리는 application 프로세스(`OrderCouponApplier`)가 오케스트레이션한다.
 
 ## 6. 취소·복원 흐름
 
@@ -311,10 +310,10 @@ D) return discountRule.calculateDiscount(base)
 | totalAmount | 주문 총액(라인 합) | 유지. `place()`가 자체 계산 |
 | discountAmount | 쿠폰 할인액 | 신설. 쿠폰 없으면 `Money.ZERO` |
 | payableAmount | 청구액 = totalAmount − discountAmount | 신설. 결제·환불 기준 |
-| usedCouponId | 사용한 쿠폰 | 신설, nullable. `[추정: 명]` |
+| usedCouponId | 사용한 쿠폰 | nullable |
 
 - 세 금액 모두 사실 기록으로 보존. 결제 호출부 `getTotalAmount()` → **`getPayableAmount()`**.
-- `[추정]` `Money` 확장: `minus(Money)`(비음수 유지), 정률 floor 헬퍼, `min(Money)`. 클램프를 §7에서 끝내므로 `payable`은 음수가 되지 않는다.
+- `Money` 확장: `minus(Money)`(음수 결과는 `Money` invariant로 거부), `min(Money)`. 정률 할인은 정수 나눗셈으로 floor 처리한다. `maxDiscountAmount`가 있으면 할인 유형과 무관하게 raw 할인액에 cap을 먼저 적용하고, 주문 금액 클램프를 §7에서 끝내므로 `payable`은 음수가 되지 않는다.
 - 라인 단위 할인 배분은 안 한다(주문당 1장·전체취소만). 미래 부분취소 시 라인 분배 규칙 필요(§15).
 
 ## 9. 만료 정의
@@ -328,7 +327,7 @@ D) return discountRule.calculateDiscount(base)
 | 지점 | 쿼리 가드 | 0행일 때 |
 |---|---|---|
 | 발급 quota | `WHERE id=:id AND issued_count < max_issue_count` | 소진 → BAD_REQUEST |
-| 쿠폰 사용 | `WHERE id=:id AND status='UNUSED' AND expires_at > :now` | 이미사용/만료 → BAD_REQUEST |
+| 쿠폰 사용 | `WHERE id=:id AND member_id=:memberId AND status='UNUSED' AND expires_at > :now` | 이미사용/만료 → BAD_REQUEST |
 | 쿠폰 복원 | `WHERE status='USED' AND used_order_id=:orderId` | 이미 복원됨(멱등, 무동작) |
 
 **DDD 긴장점**: 원자성은 infrastructure의 조건부 UPDATE가 보장하고, 도메인 메서드(`assertIssuable`·`use`·`calculateDiscount`)는 검증·계산·전이 의도를 소유한다. 도메인 모델을 우회하는 UPDATE는 order §6 `AtomicUpdateStockDeducter`와 같은 비용(invariant 우회)을 지며 테스트·문서에 남긴다. 쿠폰 사용 전략은 단일 고정(재고처럼 `lockMode` 노출 안 함). 단일 행·단일 사용이라 조건부 UPDATE 하나로 충분하다.
@@ -339,26 +338,28 @@ D) return discountRule.calculateDiscount(base)
 
 | UseCase | 입력 | 출력 | 비고 |
 |---|---|---|---|
-| 정책 생성(관리자) | `CouponPolicyCreateCommand`([v2] scope·gradeOverrides 포함) | `CouponPolicyInfo` | Txn. [v2] BRAND/PRODUCT scope면 대상 존재 검증(#31) |
+| 정책 생성(관리자) | `CouponPolicyCreateCommand`([v2] scope·gradeOverrides 포함) | `CouponPolicyInfo` | Txn. [v2] BRAND/PRODUCT/CATEGORY scope면 대상 존재 검증(#31·#40) |
 | 쿠폰 발급(선착순) | `CouponIssueCommand`(policyId, memberId) | `CouponInfo` | memberId는 인증 principal에서 주입. §4 발급 Txn. [v2] Member 로드해 grade로 규칙 해소(#36) |
-| 내 쿠폰 목록 | memberId, status?, page, size | `PageResult<CouponInfo>` | memberId는 인증 principal 기준. readOnly. 만료는 파생 필터 |
+| 내 쿠폰 목록 | memberId, status?, page, size | `PageResult<CouponInfo>` | memberId는 인증 principal 기준. readOnly. `status`는 저장 상태 필터, 만료는 `expired` 응답 필드로 파생 |
 | (주문 생성 확장) | `OrderPlaceCommand`(+couponId) | `OrderInfo` | order UseCase에 쿠폰 소비 삽입(§5) |
 
-명칭은 `[추정]`(order 컨벤션 유도). 신규 발급/조회는 두 Repository만, 주문 생성은 기존 `OrderPlaceUseCase`에 `IssuedCouponRepository` 의존을 추가한다. 결제 실패·주문 취소의 재고/쿠폰 복원은 application의 `OrderCompensationHelper`가 묶어 수행한다.
+내 쿠폰 목록의 `page`/`size`는 공통 `PageQuery`가 검증한다. 기본값은 `page=0`, `size=20`이고, `page < 0` 또는 `size`가 1~100 범위를 벗어나면 `BAD_REQUEST`.
+
+신규 발급/조회는 두 Repository만, 주문 생성은 기존 `OrderPlaceUseCase`에 쿠폰 적용 컴포넌트를 연결한다. 결제 실패·주문 취소의 재고/쿠폰 복원은 application의 `OrderCompensationHelper`가 묶어 수행한다.
 
 [v2] **정책 생성의 대상 존재 검증**(#31·#40): `BRAND`→`BrandRepository`, `PRODUCT`→`ProductRepository`, `CATEGORY`→`CategoryRepository.findById`로 대상 ID 존재를 확인하고 없으면 `NOT_FOUND`. 죽은 쿠폰(존재하지 않는 대상으로 영원히 매칭 0)을 발급 전에 차단한다. `CATEGORY`는 루트·중간·리프 어느 깊이든 대상이 될 수 있다(서브트리로 해소되므로, #41).
 
-[v2 #42] **주문 생성의 서브트리 해소**: `OrderPlaceUseCase`에 `CategoryRepository` 의존을 추가한다. 쿠폰 scope가 `CATEGORY`일 때만 `findSelfAndDescendantIds(targetId)`를 호출해 해소 집합을 쿠폰 계산에 넘긴다. 다른 scope면 호출하지 않는다.
+[v2 #42] **주문 생성의 서브트리 해소**: `OrderCouponApplier`에 `CategoryRepository` 의존을 추가한다. 쿠폰 scope가 `CATEGORY`일 때만 `findSelfAndDescendantIds(targetId)`를 호출해 해소 집합을 쿠폰 계산에 넘긴다. 다른 scope면 호출하지 않는다.
 
 [v2] **발급의 등급 조회**(#36·#37): `CouponIssueUseCase`가 `MemberRepository.findById(memberId)`로 회원을 로드해 `grade`를 얻고 `IssuedCoupon.issue(policy, memberId, grade, now)`에 전달한다. 등급은 발급 시점에만 읽힌다 — 주문 생성 UseCase는 등급을 모른다.
 
-## 12. 5계층 매핑 `[추정: 경로·명칭]`
+## 12. 5계층 매핑
 
-- **interfaces** (`com.commerce.interfaces.api.coupon`): `CouponControllerV1`(`/api/v1/coupons` 발급, `/api/v1/coupons/me` 내 쿠폰), `CouponPolicyControllerV1`(`/api/v1/admin/coupon-policies` 관리). 고객 쿠폰 API의 `memberId`는 요청 body/path/query가 아니라 인증 principal에서 읽는다. `ApiResponse<T>` 직반환(프로젝트 컨벤션). [v2] `CouponPolicyCreateRequest`에 scope·gradeOverrides 필드 추가.
-- **application** (`com.commerce.application.coupon`): UseCase, `*Command`/`*Info`. [v2] `CouponPolicyCreateUseCase`에 `BrandRepository`·`ProductRepository`·`CategoryRepository` 의존 추가(대상 검증), `CouponIssueUseCase`에 `MemberRepository` 의존 추가(등급 조회). `OrderPlaceUseCase`(application.order)에 `CategoryRepository` 의존 추가(CATEGORY 서브트리 해소, #42).
+- **interfaces** (`com.commerce.interfaces.api.coupon`): `CouponControllerV1`(`/api/v1/coupons` 발급, `/api/v1/coupons/me` 내 쿠폰), `CouponPolicyControllerV1`(`/api/v1/admin/coupon-policies` 관리). 고객 쿠폰 API의 `memberId`는 요청 body/path/query가 아니라 인증 principal에서 읽는다. `ApiResponse<T>` 직반환(프로젝트 컨벤션). [v2] `CouponPolicyCreateRequest`에 `scopeType`·`scopeTargetId`·`gradeOverrides` 필드 추가. 현재 `CouponPolicyResponse`는 기본 할인 규칙·발급 기간·수량·활성 여부만 응답하고 scope·grade override는 echo하지 않는다.
+- **application** (`com.commerce.application.coupon`): UseCase, `*Command`/`*Info`. [v2] `CouponPolicyCreateUseCase`에 `BrandRepository`·`ProductRepository`·`CategoryRepository` 의존 추가(대상 검증), `CouponIssueUseCase`에 `MemberRepository` 의존 추가(등급 조회). 주문 생성 쪽은 `OrderCouponApplier`(application.order)가 `IssuedCouponRepository`·`CategoryRepository`로 쿠폰 적용과 CATEGORY 서브트리 해소를 맡는다(#42).
 - **domain** (`com.commerce.domain.coupon`): `CouponPolicy`/`IssuedCoupon`/(`DiscountRule`)/`DiscountType`/`CouponStatus`, `CouponPolicyRepository`·`IssuedCouponRepository`. [v2] `ApplicabilityScope`/`ScopeType`(scope VO), `DiscountableLine`(중립 입력 record) 추가.
-- **infrastructure** (`com.commerce.infrastructure.coupon`): `*JpaEntity`, JpaRepository(조건부 UPDATE 쿼리 포함), `RepositoryImpl`. `DiscountRule`은 `@Embedded` 검토. UNIQUE(policy_id, member_id). [v2] `ApplicabilityScope` `@Embedded`(coupon_policy·issued_coupon 양쪽), `gradeOverrides`는 `@ElementCollection` 보조 테이블(`coupon_policy_grade_override`).
-- **member 도메인 변경** [v2]: `com.commerce.domain.member`에 `MemberGrade` enum(`BRONZE`/`SILVER`/`GOLD`/`VIP`) 추가, `Member`에 `grade` 필드·`MemberJpaEntity`에 컬럼 추가. 가입 시 기본 `BRONZE`, 운영자 변경 메서드. 쿠폰 도메인은 `Member`를 ID로만 참조하고 발급 시 grade를 읽는다.
+- **infrastructure** (`com.commerce.infrastructure.coupon`): `*JpaEntity`, JpaRepository(조건부 UPDATE 쿼리 포함), `RepositoryImpl`. `DiscountRuleEmbeddable`과 `ApplicabilityScopeEmbeddable`로 VO를 매핑한다. UNIQUE(policy_id, member_id). [v2] `ApplicabilityScopeEmbeddable`은 `coupon_policies`·`issued_coupons` 양쪽에 저장하고, `gradeOverrides`는 `@ElementCollection` 보조 테이블(`coupon_policy_grade_overrides`)로 저장한다.
+- **member 도메인 변경** [v2]: `com.commerce.domain.member`에 `MemberGrade` enum(`BRONZE`/`SILVER`/`GOLD`/`VIP`) 추가, `Member`에 `grade` 필드·`MemberJpaEntity`에 컬럼 추가. 가입 시 기본 `BRONZE`, 수동 등급 변경 도메인 메서드(`changeGrade`) 보유. 외부 등급 변경 API는 아직 없다. 쿠폰 도메인은 `Member`를 ID로만 참조하고 발급 시 grade를 읽는다.
 
 ## 13. ErrorType — 신규 없음
 
@@ -385,13 +386,13 @@ D) return discountRule.calculateDiscount(base)
 - **application**: 결제 성공/실패 목 → 쿠폰 `USED`/복원. 주문 취소 → 쿠폰 복원 + `payableAmount` 환불. 0원 주문 → 게이트웨이 미호출 + `PAID`.
 - **application** [v2]: 등급 다른 두 회원이 같은 등급차등 정책 발급 → 각자 다른 규칙 박제. BRAND-scoped 쿠폰 주문 적용 end-to-end(매칭 부분합 할인). 존재하지 않는 brandId/categoryId로 정책 생성 → `NOT_FOUND`.
 - **application** [v2 #42]: CATEGORY 쿠폰 발급 후 그 카테고리 서브트리에 하위 카테고리·상품을 추가 → 주문 시 신선 해소로 새 상품까지 매칭됨(발급 시점 박제였다면 누락). 서브트리 밖 카테고리 상품은 미매칭.
-- `@WebMvcTest`: 발급·내쿠폰·정책생성 + 쿠폰 적용 주문. ArchUnit `LayerDependencyTest` · Spotless 그린.
+- 테스트 현황: `CouponControllerV1Test`는 발급·내쿠폰 WebMvcTest를 검증한다. 정책 생성 입력은 `CouponPolicyCreateRequestTest`가 raw string → command 변환을 검증하고, `/api/v1/admin/coupon-policies` 관리자 경계는 `SecurityConfigTest`가 검증한다. 쿠폰 적용 주문 흐름은 `OrderPlaceUseCaseTest`와 쿠폰 infrastructure 통합 테스트로 고정한다. ArchUnit `LayerDependencyTest` · Spotless 그린.
 
 ## 15. 보류·확장 지점 (의식적으로 미룸)
 
 미결(권장 기본값만 둔 것)은 §0.2로 이동했다. 여기는 **기능 확장**만 둔다.
 
-- **orphan/멱등성** (order §8·§14 상속): 결제 성공 후 Txn2 커밋 전 크래시 → 쿠폰 `USED`·재고 차감·주문 `PAYMENT_PENDING`·돈 빠짐. `POST /orders` 재시도 시 둘째 시도가 조건부 UPDATE 0행으로 실패. 주문 멱등키 작업과 한 묶음.
+- **orphan/멱등성** (order §8·§14 상속): 결제 성공 후 Txn2 커밋 전 크래시 → 쿠폰 `USED`·재고 차감·주문 `PAYMENT_PENDING`·돈 빠짐. `POST /api/v1/orders` 재시도 시 둘째 시도가 조건부 UPDATE 0행으로 실패. 주문 멱등키 작업과 한 묶음.
 - ~~상품/브랜드 한정 쿠폰~~ → **v2에서 구현**(`PRODUCT`/`BRAND` scope, #29~#34).
 - ~~CATEGORY 한정 쿠폰~~ → **v2 후속에서 구현**(계층형 카테고리 도메인 도입 후 서브트리 매칭, #40~#42).
 - **다중·교차 대상** [v2 보류 #30]: 단일차원 다중ID(`BRAND in {A,B}`), 다차원 교차(`카테고리Y 안의 브랜드X`). 규칙 엔진 필요.

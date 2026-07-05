@@ -81,9 +81,9 @@
 
 ## 3. Value Object
 
-- `Money(long amount)` — KRW 고정, 음수 금지. 원은 정수 통화라 `long`이면 정확하고 `BigDecimal` 복잡도를 피한다. `currency` 필드 없음(YAGNI). 연산 메서드는 주문이 합계 계산 시 필요해지면 추가.
+- `Money(long amount)` — KRW 고정, 음수 금지. 원은 정수 통화라 `long`이면 정확하고 `BigDecimal` 복잡도를 피한다. `currency` 필드 없음(YAGNI). 현재 주문·쿠폰 계산을 위해 `plus`, `minus`, `multiply`, `min`, 비교 헬퍼를 제공한다.
 - `Stock(int quantity)` — 0 미만 금지. `decrease(int)`/`increase(int)`가 새 `Stock` 반환(불변). commerce-api의 **판매 가능 재고**를 표현(실물 재고는 WMS 소유 — §10).
-- `OptionValue(String name, String value)` — not blank. JPA 측은 `@Embeddable` + `@ElementCollection`.
+- `OptionValue(String name, String value)` — not blank. JPA 측은 `OptionValueEmbeddable` + `@ElementCollection`.
 - ID 참조는 **순수 Long**(ID VO 미사용).
 
 ## 4. 도메인 공통 추상(페이징·검색)
@@ -91,6 +91,7 @@
 domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring Data `Pageable`/`Page`를 도메인에 노출하지 않는다.
 
 - `PageResult<T>(List<T> items, long totalCount, int page, int size)` — **제네릭**, 위치: `com.commerce.support.page` (어디서든 참조 가능). `totalPages()`/`hasNext()` 파생 메서드 보유.
+- `PageQuery(page, size)` — 목록 입력 검증의 단일 진실 원천. `page`는 0 이상, `size`는 1~100만 허용하며 위반 시 `BAD_REQUEST`. 현재 목록 API 기본값은 `page=0`, `size=20`이다.
 - `ProductSearchCondition(String keyword, List<Long> categoryIds, Long brandId, int page, int size)` — **상품 전용**, 위치: `com.commerce.domain.product`. 상품 전용 필드(keyword·categoryIds·brandId)라 범용 support가 아닌 product 도메인에 둔다. domain `ProductRepository.search(...)`가 직접 참조하므로 domain에 있어야 한다. `keyword`·`categoryIds`·`brandId`는 선택 필터(null 허용), `page`는 **0-base**. `categoryIds`는 카테고리 도메인 도입으로 단일 `categoryId`에서 바뀌었다 — 상위 카테고리 검색 시 하위 리프까지 펼친 id 목록을 받아 `IN` 필터한다([`../category/category-domain-spec.md`](../category/category-domain-spec.md) §3).
   - **이름이 `*Criteria`가 아닌 이유**: `ddd.md §7`·ArchUnit 규칙상 `*Criteria`는 **application 계층 전용** 조회 경계 객체다. 이 객체는 domain Repository 인터페이스가 소유하는 query 객체(DDD Specification 성격)이므로 `*Criteria`로 명명하면 컨벤션과 충돌한다. 그래서 domain 적합 이름인 `Condition`을 쓴다. (초기엔 `ProductSearchCriteria`로 잘못 명명해 ArchUnit이 위반을 잡았고, 개명으로 해소.)
 - infrastructure에서 `Condition → Spring Data Pageable`, `Page → PageResult` 변환. **Spring Data 의존은 infra에 가둔다.**
@@ -100,18 +101,19 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 | UseCase | 입력 | 출력 | 비고 |
 |---|---|---|---|
 | 상품 등록 | `ProductRegisterCommand` | `ProductDetailInfo` | Product+SKU **한 트랜잭션** |
-| 상품 상세 조회 | productId | `ProductDetailInfo` | readOnly, Product+SKU 조립 |
+| 상품 상세 조회 | productId | `ProductDetailInfo` | readOnly, Product+SKU+Brand 조립 |
 | 상품 목록/검색 | `search(keyword, categoryId, brandId, page, size)` | `PageResult<ProductSummaryInfo>` | readOnly. `categoryId`를 하위 리프까지 펼쳐 `ProductSearchCondition.categoryIds` 조립. name LIKE + categoryId IN + brandId 필터 |
 | 상품 상태 변경 | productId | — | suspend / resume / discontinue |
-| SKU 가격 변경 | `SkuPriceChangeCommand` | — | applyDiscount / changePrice |
-| SKU 재고 조정 | `SkuStockAdjustCommand` | — | restock |
+| SKU 할인 적용 | `SkuApplyDiscountCommand` | — | applyDiscount |
+| SKU 가격 변경 | `SkuChangePriceCommand` | — | changePrice |
+| SKU 재고 추가 | `SkuRestockCommand` | — | restock |
 
 - 목록·검색·상세에서 **`ON_SALE` + 브랜드 `ACTIVE`만 노출** (`SUSPENDED`·`DISCONTINUED`·비활성 브랜드 제외). 상세 조회 시 비-`ON_SALE` 또는 비활성 브랜드면 `NOT_FOUND`. 자세한 규칙은 §1 "상태 의미와 노출 규칙" 참조.
-- 상세·조립 패턴: UseCase가 `ProductRepository` + `SkuRepository`를 각각 호출해 `Info`로 조립한다. 도메인·인프라가 다른 Aggregate를 끌어오지 않는다.
+- 상세·조립 패턴: UseCase가 `ProductRepository` + `SkuRepository` + `BrandRepository`를 각각 호출해 `Info`로 조립한다. 도메인·인프라가 다른 Aggregate를 끌어오지 않는다.
 
 ### 상품 등록을 한 트랜잭션으로 두는 근거 (규칙의 명시적 예외)
 
-프로젝트 규칙 "1 트랜잭션 = 1 Aggregate **수정**"과 충돌하지만 의식적으로 예외를 둔다.
+프로젝트 기본 원칙 "1 트랜잭션 = 1 Aggregate **수정**"의 의식적 예외다.
 
 - 규칙은 "수정"을 말하며, 신규 **생성**은 기존 상태 변경이 아니고 경합이 없다.
 - 상품과 그 옵션은 함께 태어나는 게 도메인상 자연스럽고, 쪼개면 "옵션 0개 상품"이라는 어색한 중간 상태 + 고아 상품 위험이 생긴다.
@@ -121,14 +123,14 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 ## 6. 5계층 매핑
 
 - **interfaces**: `ProductControllerV1`(`/api/v1/products` 공개 조회), `ProductAdminControllerV1`(`/api/v1/admin/products` 관리), `SkuControllerV1`(`/api/v1/admin/skus` 관리), `*Request`/`*Response`.
-- **application**: 위 UseCase들, `*Command`/`*Criteria`/`*Info`.
+- **application**: 위 UseCase들, `*Command`/`*Info`. 검색 UseCase는 느슨한 파라미터를 받아 domain의 `ProductSearchCondition`을 조립한다.
 - **domain**: `Product`/`Sku`/VO/`ProductStatus`, `ProductRepository`·`SkuRepository`(인터페이스).
-- **infrastructure**: `ProductJpaEntity`/`SkuJpaEntity`(+`OptionValue` `@Embeddable`), JpaRepository, RepositoryImpl(`Criteria→Pageable`, `Page→PageResult` 매핑). JPA 연관관계 어노테이션 없이 ID 참조.
+- **infrastructure**: `ProductJpaEntity`/`SkuJpaEntity`(+`OptionValueEmbeddable` `@Embeddable`), JpaRepository, RepositoryImpl(`ProductSearchCondition→Pageable`, `Page→PageResult` 매핑). JPA 연관관계 어노테이션 없이 ID 참조.
 
 ## 7. 구현 시 주의
 
 - **`ErrorType` 부족**: 현재 `INTERNAL_ERROR/BAD_REQUEST/NOT_FOUND/CONFLICT`만 존재. 새 타입 남발 대신 "재고 부족"은 `BAD_REQUEST` 재사용, "상품 없음"은 `NOT_FOUND` 사용을 권장.
-- `SkuRepository`에 `saveAll`(등록용)·`findByProductId`(상세 조립용) 필요.
+- `SkuRepository`는 `save`/`saveAll`, `findById`/`findByIds`, `findByProductId`(상세 조립용), `findByProductIds`(목록 최저가 조립용)를 제공한다.
 - 검색은 `Product.name` DB `LIKE`(이름 contains). 검색엔진 아님.
 - 식별자는 `Long id`만(외부용 productCode/skuCode 없음). 대표 이미지는 URL 1장.
 
@@ -139,7 +141,7 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 
 ## 9. 보류·확장 지점 (의식적으로 미룸)
 
-- 재고 차감 동시성 락 → **주문 도메인**에서 결정(낙관적 `@Version` 유력).
+- ~~재고 차감 동시성 락~~ → 해소: 주문 도메인에서 `StockDeducter` 포트와 낙관적·비관적·조건부 원자 차감 3전략을 구현했다.
 - ~~Brand 도메인 + ID 존재 검증~~ → 해소: [`../brand/brand-domain-spec.md`](../brand/brand-domain-spec.md)(brandId 필수화·존재검증·노출 게이트).
 - ~~Category 도메인 + 존재 검증~~ → 해소: [`../category/category-domain-spec.md`](../category/category-domain-spec.md)(categoryId 존재+리프 검증, 상위 검색 하위 펼침).
 - 검색엔진(현재 DB LIKE).
@@ -151,7 +153,7 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 
 ## 10. 재고 컨텍스트 분리: commerce ↔ WMS (이벤트 연동)
 
-재고는 **두 개의 다른 개념**으로 나뉘고 각각 별도 바운디드 컨텍스트가 소유한다. 별도 앱(`apps/commerce-api` ↔ `apps/wms`), 별도 DB, **Kafka 이벤트로만** 소통한다.
+재고는 **두 개의 다른 개념**으로 나뉘고 각각 별도 바운디드 컨텍스트가 소유한다. 현재 코드는 `apps/commerce-api`의 판매 가능 재고만 구현되어 있고, 별도 WMS 앱과 Kafka 이벤트 연동은 아직 구현되지 않은 설계 방향이다.
 
 | 컨텍스트 | 재고 개념 | 권위를 갖는 전이 |
 |---|---|---|
@@ -168,7 +170,7 @@ domain 순수성("어디도 import 안 함") 규칙을 지키기 위해 Spring D
 
 1. commerce-api 카탈로그 도메인(`Sku.stock` 포함) — 본 문서.
 2. commerce ↔ WMS **이벤트 계약**(토픽·스키마: 입고통지·판매차감 …) — **추후 상세**(별도 설계·문서).
-3. `apps/wms` 최소 구현(`Inventory` Aggregate + 입고/조정) + 한 흐름 end-to-end 검증.
+3. WMS 앱 최소 구현(`Inventory` Aggregate + 입고/조정) + 한 흐름 end-to-end 검증.
 4. *(나중)* 주문 + 재고 예약/확정 **사가**(결과적 일관성·보상).
 
 ### 보류

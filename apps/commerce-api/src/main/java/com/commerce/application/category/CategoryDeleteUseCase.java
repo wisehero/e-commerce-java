@@ -22,7 +22,7 @@ public class CategoryDeleteUseCase {
     /**
      * 카테고리를 삭제한다.
      * 하위 카테고리가 매달려 있으면 고아 노드가 생기므로 삭제를 막는다.
-     * (매달린 상품 검증은 product 연동 단계에서 추가)
+     * (매달린 상품 검증은 아직 하지 않는다.)
      */
     @Transactional
     public void delete(Long categoryId) {

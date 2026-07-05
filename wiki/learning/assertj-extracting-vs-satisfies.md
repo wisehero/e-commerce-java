@@ -81,7 +81,7 @@ assertThat(member)
 
 ## 본 프로젝트 사례
 
-- `MemberSignUpFacadeTest.should_returnMemberInfo_when_signUpWithValidCommand`
+- `MemberSignUpUseCaseTest.should_returnMemberInfo_when_signUpWithValidCommand`
   - `MemberInfo`(record)의 모든 필드 비교 → `usingRecursiveComparison()`이 최적
 - 예외 케이스 (`extracting("errorType")`)
   - 단일 필드 검증이라 `extracting`이 간결

@@ -17,7 +17,8 @@ import com.commerce.support.error.ErrorType;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 서버 주도 장바구니 체크아웃. Cart와 Order 도메인을 직접 결합하지 않고 application 계층에서 오케스트레이션한다.
+ * 서버 주도 장바구니 체크아웃. PAID 주문은 내구성 정리 작업을 즉시 시도하되,
+ * 정리 실패가 이미 확정된 결제 결과를 실패 응답으로 바꾸지 않도록 application 계층에서 오케스트레이션한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -25,9 +26,13 @@ public class CartCheckoutUseCase {
 
     private final CartRepository cartRepository;
     private final OrderPlaceUseCase orderPlaceUseCase;
-    private final CartClearUseCase cartClearUseCase;
+    private final CartCheckoutCleanupUseCase cleanupUseCase;
 
     public OrderInfo checkout(CartCheckoutCommand command) {
+        if (!cleanupUseCase.cleanupPending(command.memberId())) {
+            throw new CoreException(ErrorType.CONFLICT, "이전 장바구니 주문을 정리 중입니다. 잠시 후 다시 시도해주세요.");
+        }
+
         Cart cart = cartRepository.findByMemberId(command.memberId())
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "장바구니가 없습니다."));
         if (cart.isEmpty()) {
@@ -36,7 +41,7 @@ public class CartCheckoutUseCase {
 
         OrderInfo order = orderPlaceUseCase.place(toOrderPlaceCommand(command, cart));
         if (OrderStatus.PAID.name().equals(order.status())) {
-            cartClearUseCase.clear(command.memberId());
+            cleanupUseCase.cleanup(order.id());
         }
         return order;
     }

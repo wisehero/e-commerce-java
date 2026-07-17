@@ -76,6 +76,29 @@ public class Cart {
         lines.removeIf(line -> line.getSkuId().equals(skuId));
     }
 
+    /**
+     * 결제된 주문 수량을 장바구니에서 차감한다.
+     * 결제 중 같은 SKU가 추가됐다면 주문 수량을 뺀 나머지는 유지하고,
+     * 현재 수량이 주문 수량 이하면 해당 라인을 제거한다. 이미 없는 라인은 멱등하게 무시한다.
+     */
+    public void removePurchasedItem(Long skuId, int purchasedQuantity) {
+        if (skuId == null) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "SKU ID는 필수입니다.");
+        }
+        if (purchasedQuantity < 1) {
+            throw new CoreException(ErrorType.BAD_REQUEST, "구매 수량은 1개 이상이어야 합니다.");
+        }
+        CartLine line = findLine(skuId);
+        if (line == null) {
+            return;
+        }
+        if (line.getQuantity() <= purchasedQuantity) {
+            removeItem(skuId);
+            return;
+        }
+        line.decreaseQuantity(purchasedQuantity);
+    }
+
     public void clear() {
         lines.clear();
     }

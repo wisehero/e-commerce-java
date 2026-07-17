@@ -18,7 +18,7 @@ public class CartClearUseCase {
 
     @Transactional
     public void clear(Long memberId) {
-        cartRepository.findByMemberId(memberId).ifPresent(cart -> {
+        cartRepository.findByMemberIdForUpdate(memberId).ifPresent(cart -> {
             cart.clear();
             cartRepository.save(cart);
         });

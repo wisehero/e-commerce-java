@@ -19,6 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -30,6 +31,8 @@ import com.commerce.domain.brand.Brand;
 import com.commerce.domain.brand.BrandRepository;
 import com.commerce.domain.brand.BrandStatus;
 import com.commerce.domain.category.CategoryRepository;
+import com.commerce.domain.cart.CartCleanupTask;
+import com.commerce.domain.cart.CartCleanupTaskRepository;
 import com.commerce.domain.coupon.ApplicabilityScope;
 import com.commerce.domain.coupon.DiscountRule;
 import com.commerce.domain.coupon.DiscountType;
@@ -79,6 +82,8 @@ class OrderPlaceUseCaseTest {
     @Mock
     private OrderRepository orderRepository;
     @Mock
+    private CartCleanupTaskRepository cartCleanupTaskRepository;
+    @Mock
     private IssuedCouponRepository issuedCouponRepository;
     @Mock
     private StockDeducter stockDeducter;
@@ -99,8 +104,9 @@ class OrderPlaceUseCaseTest {
         OrderLinePreparer orderLinePreparer = new OrderLinePreparer(purchasableItemResolver,
             Map.of("optimistic", stockDeducter));
         OrderCouponApplier orderCouponApplier = new OrderCouponApplier(issuedCouponRepository, categoryRepository);
-        useCase = new OrderPlaceUseCase(memberRepository, orderRepository, orderLinePreparer, orderCouponApplier,
-            orderCompensationHelper, paymentGateway, new TransactionTemplate(transactionManager));
+        useCase = new OrderPlaceUseCase(memberRepository, orderRepository, cartCleanupTaskRepository,
+            orderLinePreparer, orderCouponApplier, orderCompensationHelper, paymentGateway,
+            new TransactionTemplate(transactionManager));
     }
 
     private OrderPlaceCommand command(String lockMode) {
@@ -213,6 +219,7 @@ class OrderPlaceUseCaseTest {
             assertThat(info.usedCouponId()).isEqualTo(COUPON_ID);
             then(paymentGateway).should().pay(ORDER_ID, new Money(11000));
             then(issuedCouponRepository).should().markUsedIfAvailable(eq(COUPON_ID), eq(MEMBER_ID), any(), eq(ORDER_ID));
+            then(cartCleanupTaskRepository).should(never()).save(any());
         }
 
         @Test
@@ -232,6 +239,13 @@ class OrderPlaceUseCaseTest {
             // then
             assertThat(info.status()).isEqualTo("PAID");
             assertThat(info.sourceCartId()).isEqualTo(SOURCE_CART_ID);
+
+            ArgumentCaptor<CartCleanupTask> captor = ArgumentCaptor.forClass(CartCleanupTask.class);
+            then(cartCleanupTaskRepository).should().save(captor.capture());
+            assertThat(captor.getValue().getOrderId()).isEqualTo(ORDER_ID);
+            assertThat(captor.getValue().getCartId()).isEqualTo(SOURCE_CART_ID);
+            assertThat(captor.getValue().getMemberId()).isEqualTo(MEMBER_ID);
+            assertThat(captor.getValue().isPending()).isTrue();
         }
     }
 
@@ -254,6 +268,7 @@ class OrderPlaceUseCaseTest {
             assertThat(info.status()).isEqualTo("CANCELLED");
             then(skuRepository).should().save(any(Sku.class));         // 재고 복원
             then(paymentGateway).should(never()).refund(any(), any()); // 결제 실패라 환불 없음
+            then(cartCleanupTaskRepository).should(never()).save(any());
         }
 
         @Test
@@ -276,6 +291,26 @@ class OrderPlaceUseCaseTest {
             // then
             assertThat(info.status()).isEqualTo("CANCELLED");
             then(issuedCouponRepository).should().restoreByOrderId(ORDER_ID);
+        }
+
+        @Test
+        @DisplayName("카트 기반 주문이어도 결제 실패 시 정리 작업을 만들지 않는다")
+        void should_notCreateCartCleanupTask_when_cartOrderPaymentFails() {
+            // given
+            givenValidCatalog();
+            given(paymentGateway.pay(eq(ORDER_ID), any())).willReturn(PaymentResult.failure());
+            given(skuRepository.save(any(Sku.class))).willAnswer(inv -> inv.getArgument(0));
+            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(
+                Order.reconstitute(ORDER_ID, MEMBER_ID, OrderStatus.PAYMENT_PENDING,
+                    pendingOrder().getOrderLines(), new Money(16000), Money.ZERO, new Money(16000), null,
+                    SOURCE_CART_ID)));
+
+            // when
+            OrderInfo info = useCase.place(cartSourceCommand("optimistic"));
+
+            // then
+            assertThat(info.status()).isEqualTo("CANCELLED");
+            then(cartCleanupTaskRepository).should(never()).save(any());
         }
     }
 

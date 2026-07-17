@@ -10,5 +10,7 @@ public interface OrderRepository {
 
     Optional<Order> findById(Long id);
 
+    Optional<Order> findByIdForUpdate(Long id);
+
     PageResult<Order> findByMemberId(Long memberId, int page, int size);
 }

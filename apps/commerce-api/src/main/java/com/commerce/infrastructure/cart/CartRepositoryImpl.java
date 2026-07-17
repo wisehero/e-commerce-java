@@ -29,7 +29,7 @@ public class CartRepositoryImpl implements CartRepository {
     /** 신규: carts 저장 → 생성된 id로 cart_lines 저장 → 조립 */
     private Cart insert(Cart cart) {
         CartJpaEntity savedCart = cartJpa.save(CartJpaEntity.fromDomain(cart));
-        List<CartLine> savedLines = replaceLines(savedCart.getId(), cart.getLines());
+        List<CartLine> savedLines = insertLines(savedCart.getId(), cart.getLines());
         return savedCart.toDomain(savedLines);
     }
 
@@ -47,6 +47,10 @@ public class CartRepositoryImpl implements CartRepository {
 
     private List<CartLine> replaceLines(Long cartId, List<CartLine> lines) {
         cartLineJpa.deleteByCartId(cartId);
+        return insertLines(cartId, lines);
+    }
+
+    private List<CartLine> insertLines(Long cartId, List<CartLine> lines) {
         if (lines.isEmpty()) {
             return List.of();
         }
@@ -64,8 +68,26 @@ public class CartRepositoryImpl implements CartRepository {
             .map(entity -> entity.toDomain(linesOf(entity.getId())));
     }
 
+    @Override
+    public Optional<Cart> findByMemberIdForUpdate(Long memberId) {
+        return cartJpa.findByMemberIdForUpdate(memberId)
+            .map(entity -> entity.toDomain(linesForUpdateOf(entity.getId())));
+    }
+
+    @Override
+    public Optional<Cart> findByIdForUpdate(Long cartId) {
+        return cartJpa.findByIdForUpdate(cartId)
+            .map(entity -> entity.toDomain(linesForUpdateOf(entity.getId())));
+    }
+
     private List<CartLine> linesOf(Long cartId) {
         return cartLineJpa.findByCartId(cartId).stream()
+            .map(CartLineJpaEntity::toDomain)
+            .toList();
+    }
+
+    private List<CartLine> linesForUpdateOf(Long cartId) {
+        return cartLineJpa.findByCartIdForUpdate(cartId).stream()
             .map(CartLineJpaEntity::toDomain)
             .toList();
     }

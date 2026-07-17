@@ -154,7 +154,7 @@ class CartAddItemUseCaseTest {
         givenValidCatalog(5);
         Cart cart = Cart.create(MEMBER_ID);
         cart.addItem(SKU_ID, 3);
-        given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(cart));
+        given(cartRepository.findByMemberIdForUpdate(MEMBER_ID)).willReturn(Optional.of(cart));
 
         // when & then — 3 + 3 = 6 > 5
         assertThatThrownBy(() -> useCase.addItem(command(3)))
@@ -168,7 +168,7 @@ class CartAddItemUseCaseTest {
     void should_createCartAndSave_when_noExistingCart() {
         // given
         givenValidCatalog(100);
-        given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.empty());
+        given(cartRepository.findByMemberIdForUpdate(MEMBER_ID)).willReturn(Optional.empty());
         given(cartRepository.save(any(Cart.class))).willAnswer(inv -> inv.getArgument(0));
         CartInfo expected = new CartInfo(MEMBER_ID, List.of(), 0L);
         given(assembler.assemble(any(Cart.class))).willReturn(expected);

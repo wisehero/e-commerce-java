@@ -1,0 +1,7 @@
+interface:
+  display_name: "Ready PR 생성"
+  short_description: "PR을 Ready for review 상태로 생성하고 검증"
+  default_prompt: "Use $create-ready-pr to publish the current branch as a Ready for review pull request."
+
+policy:
+  allow_implicit_invocation: true

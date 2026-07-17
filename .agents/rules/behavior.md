@@ -88,13 +88,18 @@
 
 ## 8. PR 생성 기본값
 
-GitHub PR을 올릴 때는 사용자가 명시적으로 "draft" 또는 "초안"을 요청한 경우에만 Draft PR로 만든다.
+GitHub PR은 항상 Ready for review 상태로 생성한다. 사용자가 명시적으로 "draft" 또는 "초안"을 요청한 경우에도 Ready 생성과 검증을 먼저 끝낸 뒤 Draft로 전환한다.
+
+### 강제 가드레일
 
 - "PR 올려", "PR 생성", "커밋과 PR 생성"은 기본적으로 **Ready for review PR**을 의미한다.
-- `gh pr create`를 사용할 때 `--draft`를 붙이지 않는다.
-- GitHub 도구의 `draft` 옵션은 기본 `false`로 둔다.
-- PR 생성 직후 `isDraft=false`인지 확인한다.
-- 실수로 Draft PR이 만들어졌다면 즉시 ready-for-review로 전환하고 다시 확인한다.
+- PR 생성 요청에는 `.agents/skills/create-ready-pr/SKILL.md`를 반드시 적용한다.
+- Draft 생성을 전제로 하는 도구나 스킬(현재 `github:yeet`)을 PR 생성에 사용하지 않는다.
+- GitHub 도구의 `draft` 옵션은 `false`로 두고, `gh pr create`에는 `--draft`를 붙이지 않는다.
+- 생성 직후 `.agents/skills/create-ready-pr/scripts/ensure-ready.sh <PR URL 또는 번호>`를 실행한다. 이 스크립트는 Draft면 즉시 Ready로 전환한 뒤 `isDraft=false`를 재검증한다.
+- PR URL이 생성된 것만으로 작업을 완료 처리하지 않는다. 위 검증이 성공하기 전에는 성공으로 보고하거나 최종 응답하지 않는다.
+- 사용자가 Draft를 명시적으로 요청했다면 위 검증 후 `gh pr ready --undo <PR URL 또는 번호>`로 전환하고 `isDraft=true`를 다시 확인한다.
+- `.github/workflows/enforce-ready-pr.yml`은 실수로 Draft 상태로 열린 새 PR을 서버에서 Ready로 복구하는 최종 백스톱이다.
 
 ## 9. 사용자 질문 도구 사용 규칙
 

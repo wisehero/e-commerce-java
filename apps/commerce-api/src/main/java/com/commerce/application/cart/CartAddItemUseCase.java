@@ -34,7 +34,7 @@ public class CartAddItemUseCase {
 
         PurchasableItem item = purchasableItemResolver.resolve(command.skuId());
 
-        Cart cart = cartRepository.findByMemberId(command.memberId())
+        Cart cart = cartRepository.findByMemberIdForUpdate(command.memberId())
             .orElseGet(() -> Cart.create(command.memberId()));
 
         int desiredQuantity = cart.quantityOf(command.skuId()) + command.quantity();

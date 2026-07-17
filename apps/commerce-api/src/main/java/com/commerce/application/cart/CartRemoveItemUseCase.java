@@ -22,7 +22,7 @@ public class CartRemoveItemUseCase {
 
     @Transactional
     public CartInfo removeItem(Long memberId, Long skuId) {
-        Cart cart = cartRepository.findByMemberId(memberId)
+        Cart cart = cartRepository.findByMemberIdForUpdate(memberId)
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "장바구니가 비어 있습니다."));
 
         cart.removeItem(skuId);

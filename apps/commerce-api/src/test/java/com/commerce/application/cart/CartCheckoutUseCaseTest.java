@@ -42,13 +42,14 @@ class CartCheckoutUseCaseTest {
     @Mock
     private OrderPlaceUseCase orderPlaceUseCase;
     @Mock
-    private CartClearUseCase cartClearUseCase;
+    private CartCheckoutCleanupUseCase cleanupUseCase;
 
     private CartCheckoutUseCase useCase;
 
     @BeforeEach
     void setUp() {
-        useCase = new CartCheckoutUseCase(cartRepository, orderPlaceUseCase, cartClearUseCase);
+        given(cleanupUseCase.cleanupPending(MEMBER_ID)).willReturn(true);
+        useCase = new CartCheckoutUseCase(cartRepository, orderPlaceUseCase, cleanupUseCase);
     }
 
     private CartCheckoutCommand command() {
@@ -72,11 +73,12 @@ class CartCheckoutUseCaseTest {
     class Success {
 
         @Test
-        @DisplayName("카트 라인을 주문 입력으로 변환하고 PAID 주문이면 카트를 비운다")
-        void should_placeOrderAndClearCart_when_orderPaid() {
+        @DisplayName("PAID 주문이면 정리를 시도하고 정리 실패와 무관하게 주문을 반환한다")
+        void should_returnPaidOrderAndAttemptCleanup_when_orderPaid() {
             // given
             given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(cartWithLine()));
             given(orderPlaceUseCase.place(any())).willReturn(orderInfo(OrderStatus.PAID, CART_ID));
+            given(cleanupUseCase.cleanup(ORDER_ID)).willReturn(false);
 
             // when
             OrderInfo result = useCase.checkout(command());
@@ -84,7 +86,7 @@ class CartCheckoutUseCaseTest {
             // then
             assertThat(result.status()).isEqualTo("PAID");
             assertThat(result.sourceCartId()).isEqualTo(CART_ID);
-            then(cartClearUseCase).should().clear(MEMBER_ID);
+            then(cleanupUseCase).should().cleanup(ORDER_ID);
 
             ArgumentCaptor<OrderPlaceCommand> captor = ArgumentCaptor.forClass(OrderPlaceCommand.class);
             then(orderPlaceUseCase).should().place(captor.capture());
@@ -114,7 +116,7 @@ class CartCheckoutUseCaseTest {
 
             // then
             assertThat(result.status()).isEqualTo("CANCELLED");
-            then(cartClearUseCase).should(never()).clear(any());
+            then(cleanupUseCase).should(never()).cleanup(any());
         }
 
         @Test
@@ -129,7 +131,7 @@ class CartCheckoutUseCaseTest {
             assertThatThrownBy(() -> useCase.checkout(command()))
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
-            then(cartClearUseCase).should(never()).clear(any());
+            then(cleanupUseCase).should(never()).cleanup(any());
         }
     }
 
@@ -147,6 +149,19 @@ class CartCheckoutUseCaseTest {
             assertThatThrownBy(() -> useCase.checkout(command()))
                 .isInstanceOf(CoreException.class)
                 .extracting("errorType").isEqualTo(ErrorType.NOT_FOUND);
+            then(orderPlaceUseCase).should(never()).place(any());
+        }
+
+        @Test
+        @DisplayName("이전 카트 정리가 끝나지 않았으면 새 체크아웃을 CONFLICT로 거부한다")
+        void should_rejectCheckout_when_previousCleanupPending() {
+            // given
+            given(cleanupUseCase.cleanupPending(MEMBER_ID)).willReturn(false);
+
+            // when & then
+            assertThatThrownBy(() -> useCase.checkout(command()))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.CONFLICT);
             then(orderPlaceUseCase).should(never()).place(any());
         }
 

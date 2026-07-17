@@ -1,15 +1,19 @@
 package com.commerce.application.order;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.commerce.domain.cart.CartCleanupTask;
+import com.commerce.domain.cart.CartCleanupTaskRepository;
 import com.commerce.domain.coupon.DiscountableLine;
 import com.commerce.domain.member.MemberRepository;
 import com.commerce.domain.order.Order;
 import com.commerce.domain.order.OrderLine;
 import com.commerce.domain.order.OrderRepository;
+import com.commerce.domain.order.OrderStatus;
 import com.commerce.domain.order.PaymentGateway;
 import com.commerce.domain.order.PaymentResult;
 import com.commerce.domain.product.StockDeducter;
@@ -34,6 +38,7 @@ public class OrderPlaceUseCase {
 
     private final MemberRepository memberRepository;
     private final OrderRepository orderRepository;
+    private final CartCleanupTaskRepository cartCleanupTaskRepository;
     private final OrderLinePreparer orderLinePreparer;
     private final OrderCouponApplier orderCouponApplier;
     private final OrderCompensationHelper orderCompensationHelper;
@@ -89,6 +94,11 @@ public class OrderPlaceUseCase {
             order.cancel();
             orderCompensationHelper.restore(order);
         }
-        return orderRepository.save(order);
+        Order saved = orderRepository.save(order);
+        if (saved.getStatus() == OrderStatus.PAID && saved.getSourceCartId() != null) {
+            cartCleanupTaskRepository.save(CartCleanupTask.pending(saved.getId(), saved.getSourceCartId(),
+                saved.getMemberId(), ZonedDateTime.now()));
+        }
+        return saved;
     }
 }

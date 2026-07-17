@@ -100,7 +100,7 @@ class OrderCancelUseCaseTest {
         @DisplayName("결제된 주문을 취소하면 재고를 복원하고 환불한다")
         void should_restoreStockAndRefund_when_paidOrder() {
             // given
-            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(orderWith(OrderStatus.PAID)));
+            given(orderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(orderWith(OrderStatus.PAID)));
             givenStockRestorable();
 
             // when
@@ -116,7 +116,8 @@ class OrderCancelUseCaseTest {
         @DisplayName("결제 전(PAYMENT_PENDING) 주문을 취소하면 재고는 복원하되 환불은 하지 않는다")
         void should_notRefund_when_pendingOrder() {
             // given
-            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(orderWith(OrderStatus.PAYMENT_PENDING)));
+            given(orderRepository.findByIdForUpdate(ORDER_ID))
+                .willReturn(Optional.of(orderWith(OrderStatus.PAYMENT_PENDING)));
             givenStockRestorable();
 
             // when
@@ -132,7 +133,8 @@ class OrderCancelUseCaseTest {
         @DisplayName("쿠폰 적용 주문을 취소하면 쿠폰을 복원하고 청구액 기준으로 환불한다")
         void should_restoreCouponAndRefundPayableAmount_when_couponOrderPaid() {
             // given
-            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(couponOrderWith(OrderStatus.PAID)));
+            given(orderRepository.findByIdForUpdate(ORDER_ID))
+                .willReturn(Optional.of(couponOrderWith(OrderStatus.PAID)));
             givenStockRestorable();
 
             // when
@@ -148,7 +150,8 @@ class OrderCancelUseCaseTest {
         @DisplayName("이미 취소된 주문은 BAD_REQUEST 예외가 발생하고 환불하지 않는다")
         void should_throwBadRequest_when_alreadyCancelled() {
             // given
-            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(orderWith(OrderStatus.CANCELLED)));
+            given(orderRepository.findByIdForUpdate(ORDER_ID))
+                .willReturn(Optional.of(orderWith(OrderStatus.CANCELLED)));
 
             // when & then
             assertThatThrownBy(() -> useCase.cancel(MEMBER_ID, ORDER_ID))
@@ -161,7 +164,7 @@ class OrderCancelUseCaseTest {
         @DisplayName("다른 회원의 주문이면 NOT_FOUND 예외가 발생하고 보상 처리를 하지 않는다")
         void should_throwNotFound_when_otherMemberOrder() {
             // given
-            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.of(orderWith(OrderStatus.PAID)));
+            given(orderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.of(orderWith(OrderStatus.PAID)));
 
             // when & then
             assertThatThrownBy(() -> useCase.cancel(OTHER_MEMBER_ID, ORDER_ID))
@@ -176,7 +179,7 @@ class OrderCancelUseCaseTest {
         @DisplayName("존재하지 않는 주문이면 NOT_FOUND 예외가 발생한다")
         void should_throwNotFound_when_orderMissing() {
             // given
-            given(orderRepository.findById(ORDER_ID)).willReturn(Optional.empty());
+            given(orderRepository.findByIdForUpdate(ORDER_ID)).willReturn(Optional.empty());
 
             // when & then
             assertThatThrownBy(() -> useCase.cancel(MEMBER_ID, ORDER_ID))

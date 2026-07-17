@@ -27,7 +27,7 @@ public class CartChangeQuantityUseCase {
 
     @Transactional
     public CartInfo changeQuantity(CartChangeQuantityCommand command) {
-        Cart cart = cartRepository.findByMemberId(command.memberId())
+        Cart cart = cartRepository.findByMemberIdForUpdate(command.memberId())
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "장바구니가 비어 있습니다."));
 
         PurchasableItem item = purchasableItemResolver.resolve(command.skuId());

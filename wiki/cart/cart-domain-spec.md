@@ -148,12 +148,16 @@ cart와 order 도메인 모델은 직접 결합하지 않는다.
 서버: 인증 memberId 기준 Cart 조회
 서버: CartLine → OrderPlaceCommand.LineCommand 변환
 서버: sourceCartId를 포함해 주문 생성
-서버: 주문이 PAID가 된 경우에만 Cart.clear()
+서버: 주문이 PAID가 되면 정리 작업 저장 후 주문 라인 수량만 Cart에서 차감
 ```
 
 - 주문 도메인은 카트 객체를 모른다. 주문에는 추적용 `sourceCartId`만 저장한다.
 - 카트가 없으면 `NOT_FOUND`, 비어 있으면 `BAD_REQUEST`로 거부한다.
 - 결제 실패 또는 주문 생성 실패 시 카트는 유지한다.
+- `PAID` 반영과 함께 DB 정리 작업을 저장하고 즉시 정리가 실패하면 스케줄러가 재시도한다.
+- 정리 작업은 `orderId`를 멱등 키로 사용하며, 현재 카트에서 주문 수량만 차감한다.
+- 정리 작업은 별도 비즈니스 Aggregate가 아니라 트랜잭션 진행 상태를 보존하는 기술적 process record다.
+- 정리 전에 주문이 사용자 취소되면 카트는 건드리지 않고 작업만 완료한다.
 - 전체 체크아웃만 지원한다. 부분 체크아웃은 §13 확장 지점으로 남긴다.
 
 ## 8. 금액 모델
@@ -169,7 +173,8 @@ cart와 order 도메인 모델은 직접 결합하지 않는다.
 | 카트 수량 변경 | `CartChangeQuantityCommand`(memberId, skuId, quantity) | `CartInfo` | 절대값 변경 + 재고 검증 |
 | 카트 라인 제거 | (memberId, skuId) | `CartInfo` | |
 | 카트 비우기 | memberId | — | `clear()` |
-| 카트 체크아웃 | `CartCheckoutCommand`(memberId, lockMode, couponId?) | `OrderInfo` | 전체 카트를 주문으로 전환, `PAID` 시 카트 비움 |
+| 카트 체크아웃 | `CartCheckoutCommand`(memberId, lockMode, couponId?) | `OrderInfo` | 전체 카트를 주문으로 전환, `PAID` 시 정리 작업 실행 |
+| 체크아웃 카트 정리 | orderId | — | 주문 수량 차감, 실패 작업 재시도 |
 | 카트 조회 | memberId | `CartInfo` | readOnly, 실시간 보강(§6), 배치 조회 |
 
 - 담기/수량변경 UseCase 직접 의존: `CartRepository` + `PurchasableItemResolver` + `CartInfoAssembler`(+ 담기 시 `MemberRepository`). SKU·상품·브랜드 조회와 구매 가능성 검증은 `PurchasableItemResolver`가 맡아 주문과 같은 기준을 공유한다.
@@ -185,22 +190,22 @@ cart와 order 도메인 모델은 직접 결합하지 않는다.
   - `DELETE /api/v1/carts/items/{skuId}` → 인증 회원 카트 라인 제거
   - `DELETE /api/v1/carts` → 인증 회원 카트 비움
   - `memberId`는 요청 body/query/path로 받지 않고 인증 principal에서 가져온다.
-- **application** (`com.commerce.application.cart`): 위 UseCase들, `CartAddItemCommand`/`CartChangeQuantityCommand`, `CartInfo`/`CartLineInfo`(+`status` enum).
-- **domain** (`com.commerce.domain.cart`): `Cart`/`CartLine`, `CartRepository`(인터페이스). 순수 자바, JPA 어노테이션 없음.
-- **infrastructure** (`com.commerce.infrastructure.cart`): `CartJpaEntity`/`CartLineJpaEntity`, `CartJpaRepository`/`CartLineJpaRepository`, `CartRepositoryImpl`(두 테이블 영속화·조립). JPA 연관 어노테이션 없이 ID 참조.
+- **application** (`com.commerce.application.cart`): 위 UseCase들, `CartCheckoutCleanupUseCase`, `CartAddItemCommand`/`CartChangeQuantityCommand`, `CartInfo`/`CartLineInfo`(+`status` enum).
+- **domain** (`com.commerce.domain.cart`): `Cart`/`CartLine`, `CartCleanupTask`, Repository 인터페이스. 순수 자바, JPA 어노테이션 없음.
+- **infrastructure** (`com.commerce.infrastructure.cart`): Cart·CartLine·CartCleanupTask JPA 매핑과 Repository 구현. JPA 연관 어노테이션 없이 ID 참조.
 
 ## 11. 구현 시 주의
 
-- **`ErrorType` 신규 없음**: `NOT_FOUND`(member/sku/product 없음, 변경·체크아웃 대상 카트 없음), `BAD_REQUEST`(재고 부족·`qty<1`·`changeQuantity(0)`·라인수 상한 초과·구매 불가 상태). product §7·order §12 가이드 따름.
-- `CartRepository`: `findByMemberId(Long) → Optional<Cart>`, `save(Cart)`(두 테이블). 카트 비우기는 `Cart.clear()` 후 `save`로 반영한다.
+- **`ErrorType` 신규 없음**: `NOT_FOUND`(member/sku/product 없음, 변경·체크아웃 대상 카트 없음), `BAD_REQUEST`(재고 부족·`qty<1`·`changeQuantity(0)`·라인수 상한 초과·구매 불가 상태), `CONFLICT`(이전 정리 작업 미완료). product §7·order §12 가이드 따름.
+- `CartRepository`: 일반 조회와 `PESSIMISTIC_WRITE` 조회, `save(Cart)`(두 테이블)를 제공한다. 카트 비우기는 `Cart.clear()` 후 `save`로 반영한다.
 - 조회 보강은 `CartInfoAssembler`가 `SkuRepository.findByIds`, `ProductRepository.findByIds`, `BrandRepository.findByIds`를 사용한다. 담기·수량변경의 단건 구매 가능성 검증은 `PurchasableItemResolver`가 각 Repository의 `findById`로 수행한다.
-- **동시성 `@Version` 안 둠**: 카트는 단일 소유자(memberId)라 경합이 거의 없다. 같은 유저의 동시 쓰기(여러 탭)가 문제되면 그때 추가.
+- 카트 변경과 체크아웃 정리는 Cart 루트·라인을 `PESSIMISTIC_WRITE` 현재 읽기로 잠근다. 라인 전량 교체는 bulk DELETE 후 재삽입해 오래된 스냅샷 행 ID로 인한 충돌을 피한다.
 - `Cart.create`(빈 카트)/`reconstitute` 분리. status 파생은 application에서(§6), 도메인에 넣지 않는다.
 
 ## 12. 검증 기준
 
 - domain 단위테스트: `addItem` 병합(수량 합산), `changeQuantity` 절대값·`qty<1` 거부, `removeItem`, `clear`, 라인수 상한.
-- application 테스트: 담기 검증(미존재 SKU·비-`ON_SALE`·재고부족 거부), 지연 생성, 조회 보강 + `status` 판정(`PURCHASABLE`/`OUT_OF_STOCK`/`UNAVAILABLE`), `cartTotal` = 구매가능 라인만 합산.
+- application 테스트: 담기 검증(미존재 SKU·비-`ON_SALE`·재고부족 거부), 지연 생성, 조회 보강 + `status` 판정(`PURCHASABLE`/`OUT_OF_STOCK`/`UNAVAILABLE`), `cartTotal` 계산, 체크아웃 주문 수량 차감, 정리 작업 실패·재시도·멱등성.
 - N+1 회피 검증: `CartInfoAssemblerTest`에서 라인 여러 개 조회 시 `SkuRepository`/`ProductRepository`/`BrandRepository`를 라인별 단건 호출하지 않고 `findByIds` 배치 호출로 조립함을 고정한다. 실제 SQL 쿼리 카운터 기반 통합 검증은 아직 없다.
 - `@WebMvcTest`: 6개 엔드포인트, 에러 응답(`$.meta.result/errorCode/message`), 빈 카트 200 응답.
 - ArchUnit `LayerDependencyTest`(cart도 동일 규칙) · Spotless 그린.

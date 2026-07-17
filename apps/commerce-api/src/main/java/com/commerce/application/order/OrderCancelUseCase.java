@@ -38,7 +38,7 @@ public class OrderCancelUseCase {
 
         // Txn: 취소(상태 전이) + 재고 복원
         Order cancelled = transactionTemplate.execute(status -> {
-            Order order = orderRepository.findById(orderId)
+            Order order = orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 주문입니다."));
             ensureOwner(order, memberId);
             wasPaid.set(order.getStatus() == OrderStatus.PAID);

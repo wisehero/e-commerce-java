@@ -88,7 +88,7 @@ class CartChangeQuantityUseCaseTest {
     @DisplayName("카트가 없으면 NOT_FOUND 예외가 발생한다")
     void should_throwNotFound_when_cartMissing() {
         // given
-        given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.empty());
+        given(cartRepository.findByMemberIdForUpdate(MEMBER_ID)).willReturn(Optional.empty());
 
         // when & then
         assertThatThrownBy(() -> useCase.changeQuantity(command(3)))
@@ -100,7 +100,7 @@ class CartChangeQuantityUseCaseTest {
     @DisplayName("재고보다 많은 수량으로 변경하면 BAD_REQUEST 예외가 발생한다")
     void should_throwBadRequest_when_exceedsStock() {
         // given — 재고 2
-        given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(cartWithLine(1)));
+        given(cartRepository.findByMemberIdForUpdate(MEMBER_ID)).willReturn(Optional.of(cartWithLine(1)));
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku(2)));
         given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
         given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.ACTIVE)));
@@ -116,7 +116,7 @@ class CartChangeQuantityUseCaseTest {
     @DisplayName("장바구니에 없는 SKU를 변경하면 NOT_FOUND 예외가 발생한다")
     void should_throwNotFound_when_lineAbsent() {
         // given — 카트는 있으나 해당 SKU 라인이 없음
-        given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(Cart.create(MEMBER_ID)));
+        given(cartRepository.findByMemberIdForUpdate(MEMBER_ID)).willReturn(Optional.of(Cart.create(MEMBER_ID)));
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku(100)));
         given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
         given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.ACTIVE)));
@@ -132,7 +132,7 @@ class CartChangeQuantityUseCaseTest {
     @DisplayName("브랜드가 비활성이면 BAD_REQUEST 예외가 발생하고 저장하지 않는다")
     void should_throwBadRequest_when_brandInactive() {
         // given
-        given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(cartWithLine(1)));
+        given(cartRepository.findByMemberIdForUpdate(MEMBER_ID)).willReturn(Optional.of(cartWithLine(1)));
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku(100)));
         given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
         given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.INACTIVE)));
@@ -148,7 +148,7 @@ class CartChangeQuantityUseCaseTest {
     @DisplayName("유효하면 수량을 변경하고 저장한 뒤 조립 결과를 반환한다")
     void should_changeAndReturn_when_valid() {
         // given
-        given(cartRepository.findByMemberId(MEMBER_ID)).willReturn(Optional.of(cartWithLine(1)));
+        given(cartRepository.findByMemberIdForUpdate(MEMBER_ID)).willReturn(Optional.of(cartWithLine(1)));
         given(skuRepository.findById(SKU_ID)).willReturn(Optional.of(sku(100)));
         given(productRepository.findById(PRODUCT_ID)).willReturn(Optional.of(product(ProductStatus.ON_SALE)));
         given(brandRepository.findById(2L)).willReturn(Optional.of(brand(BrandStatus.ACTIVE)));

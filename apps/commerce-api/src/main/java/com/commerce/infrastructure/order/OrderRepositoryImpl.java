@@ -67,6 +67,12 @@ public class OrderRepositoryImpl implements OrderRepository {
     }
 
     @Override
+    public Optional<Order> findByIdForUpdate(Long id) {
+        return orderJpa.findByIdForUpdate(id)
+            .map(entity -> entity.toDomain(linesOf(id)));
+    }
+
+    @Override
     public PageResult<Order> findByMemberId(Long memberId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
         Page<OrderJpaEntity> orderPage = orderJpa.findByMemberId(memberId, pageable);

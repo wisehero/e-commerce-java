@@ -53,6 +53,12 @@ public class CartLine {
         this.quantity = newQuantity;
     }
 
+    /** 현재 수량보다 작은 구매 완료 수량을 차감한다. 라인 제거 판단은 Cart가 담당한다. */
+    void decreaseQuantity(int count) {
+        requirePositive(count);
+        this.quantity -= count;
+    }
+
     private static void requirePositive(int quantity) {
         if (quantity < 1) {
             throw new CoreException(ErrorType.BAD_REQUEST, "수량은 1개 이상이어야 합니다.");

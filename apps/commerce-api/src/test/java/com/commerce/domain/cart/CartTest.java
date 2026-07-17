@@ -164,6 +164,62 @@ class CartTest {
     }
 
     @Nested
+    @DisplayName("removePurchasedItem (구매 완료 수량 차감)")
+    class RemovePurchasedItem {
+
+        @Test
+        @DisplayName("현재 수량이 주문 수량보다 많으면 차이만 유지한다")
+        void should_keepIncreasedQuantity_when_quantityAddedDuringCheckout() {
+            // given
+            Cart cart = emptyCart();
+            cart.addItem(10L, 3);
+
+            // when
+            cart.removePurchasedItem(10L, 2);
+
+            // then
+            assertThat(cart.quantityOf(10L)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("현재 수량이 주문 수량 이하면 라인을 제거한다")
+        void should_removeLine_when_currentQuantityNotGreaterThanPurchased() {
+            // given
+            Cart cart = emptyCart();
+            cart.addItem(10L, 2);
+
+            // when
+            cart.removePurchasedItem(10L, 2);
+
+            // then
+            assertThat(cart.quantityOf(10L)).isZero();
+        }
+
+        @Test
+        @DisplayName("이미 없는 SKU는 멱등하게 무시한다")
+        void should_doNothing_when_lineAlreadyAbsent() {
+            // given
+            Cart cart = emptyCart();
+            cart.addItem(11L, 1);
+
+            // when
+            cart.removePurchasedItem(10L, 2);
+
+            // then
+            assertThat(cart.quantityOf(11L)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("구매 수량이 1 미만이면 BAD_REQUEST 예외가 발생한다")
+        void should_throwBadRequest_when_purchasedQuantityBelowOne() {
+            // when & then
+            assertThatThrownBy(() -> emptyCart().removePurchasedItem(10L, 0))
+                .isInstanceOf(CoreException.class)
+                .extracting("errorType").isEqualTo(ErrorType.BAD_REQUEST);
+        }
+    }
+
+    @Nested
     @DisplayName("clear (비우기)")
     class Clear {
 

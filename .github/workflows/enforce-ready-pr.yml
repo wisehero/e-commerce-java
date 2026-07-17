@@ -1,0 +1,21 @@
+name: Enforce Ready Pull Requests
+
+on:
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  enforce-ready:
+    if: github.event.pull_request.draft == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Convert accidental draft to ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr ready "$PR_URL" || true
+          test "$(gh pr view "$PR_URL" --json isDraft --jq '.isDraft')" = "false"

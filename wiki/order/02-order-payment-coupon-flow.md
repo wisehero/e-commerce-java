@@ -16,23 +16,24 @@ sequenceDiagram
     participant Client as Client
     participant OrderApi as OrderControllerV1
     participant Place as OrderPlaceUseCase
-    participant Coupon as IssuedCouponRepository
+    participant Coupon as OrderCouponApplier
+    participant Compensation as OrderCompensationHelper
     participant Stock as StockDeducter/SkuRepository
+    participant CouponRepo as IssuedCouponRepository
     participant OrderRepo as OrderRepository
     participant PG as PaymentGateway
 
     Client->>OrderApi: POST /api/v1/orders
-    OrderApi->>Place: OrderPlaceCommand(memberId, lines, lockMode, couponId?)
+    OrderApi->>Place: OrderPlaceCommand(authenticated memberId, lines, lockMode, couponId?)
 
     rect rgb(245, 248, 255)
         note over Place,OrderRepo: Txn1: 주문 대기 상태 열기
         Place->>Place: 회원/상품/SKU/브랜드 검증
         Place->>Stock: SKU 재고 차감
         alt couponId 있음
-            Place->>Coupon: 발급 쿠폰 조회
-            Place->>Place: 할인액 계산
+            Place->>Coupon: 발급 쿠폰 조회/할인액 계산
             Place->>OrderRepo: Order(PAYMENT_PENDING) 저장
-            Place->>Coupon: markUsedIfAvailable(couponId, memberId, now, orderId)
+            Place->>Coupon: markUsed(appliedCoupon, memberId, orderId)
         else couponId 없음
             Place->>OrderRepo: Order(PAYMENT_PENDING) 저장
         end
@@ -51,8 +52,9 @@ sequenceDiagram
             Place->>OrderRepo: order.markPaid()
         else 결제 실패
             Place->>OrderRepo: order.cancel()
-            Place->>Stock: 재고 복원
-            Place->>Coupon: 쿠폰 복원(사용 쿠폰이 있으면)
+            Place->>Compensation: restore(order)
+            Compensation->>Stock: SKU 재고 복원
+            Compensation->>CouponRepo: 쿠폰 복원(사용 쿠폰이 있으면)
         end
     end
 
@@ -70,15 +72,16 @@ sequenceDiagram
 ## 2. 입력과 응답
 
 주문 생성 API는 `POST /api/v1/orders`다.
+카트 기반 주문은 `POST /api/v1/carts/checkout`이 서버의 회원 카트를 읽어 같은 주문 생성 흐름을 호출하며, `OrderPlaceCommand.sourceCartId`에 출처 카트 ID를 담는다.
+주문자 ID는 요청 body로 받지 않고 인증 principal에서 읽어 `OrderPlaceCommand.memberId`에 주입한다.
 
 요청의 주요 값은 다음과 같다.
 
 | 필드 | 의미 |
 |---|---|
-| `memberId` | 주문자 ID |
 | `lines[].skuId` | 구매할 SKU ID |
 | `lines[].quantity` | 구매 수량 |
-| `lockMode` | 재고 차감 전략 선택값. 현재 `optimistic`, `pessimistic`, `atomic` 계열 구현을 라우팅할 수 있다 |
+| `lockMode` | 재고 차감 전략 선택값. 현재 허용 값은 `optimistic`, `pessimistic`, `atomic`이다 |
 | `couponId` | 선택 값. 사용하려는 발급 쿠폰 ID |
 
 응답은 주문 상태와 라인 스냅샷, 금액 3종을 포함한다.
@@ -90,6 +93,7 @@ sequenceDiagram
 | `discountAmount` | 쿠폰 할인액. 쿠폰이 없으면 0 |
 | `payableAmount` | 실제 결제 및 환불 기준 금액 |
 | `usedCouponId` | 사용 쿠폰 ID. 쿠폰이 없으면 null |
+| `sourceCartId` | 카트 체크아웃으로 생성된 주문의 출처 카트 ID. 직접 주문이면 null |
 
 ## 3. Txn1: 주문 대기 상태 열기
 
@@ -101,8 +105,8 @@ sequenceDiagram
 2. 각 주문 라인의 SKU를 조회한다.
 3. SKU가 속한 상품을 조회하고 판매 가능 상태인지 확인한다.
 4. 상품의 브랜드를 조회하고 활성 상태인지 확인한다.
-5. SKU 재고를 주문 수량만큼 차감한다.
-6. 주문 라인에 상품명, 옵션 요약, 주문 시점 판매가를 스냅샷한다.
+5. 조회한 상품/SKU 정보로 주문 라인의 상품명, 옵션 요약, 주문 시점 판매가를 스냅샷한다.
+6. SKU 재고를 주문 수량만큼 차감한다. 차감에 실패하면 `Txn1` 전체가 롤백되어 주문 라인 스냅샷도 저장되지 않는다.
 7. `Order.totalAmountOf(lines)`로 라인 금액을 합산해 주문 총액을 계산한다.
 8. `couponId`가 있으면 발급 쿠폰을 조회하고 할인액을 계산한다.
 9. `Order.place(...)`로 `PAYMENT_PENDING` 주문을 생성하고 저장한다.
@@ -122,7 +126,7 @@ sequenceDiagram
 - 쿠폰 소유자와 주문자가 같아야 한다.
 - 쿠폰 상태가 `UNUSED`여야 한다.
 - 현재 시각이 쿠폰 만료 시각보다 이전이어야 한다.
-- 할인 전 주문 총액이 최소 주문 금액 이상이어야 한다.
+- 쿠폰의 할인 대상 금액이 최소 주문 금액 이상이어야 한다. 주문 전체 쿠폰은 주문 총액, 한정 쿠폰은 적용 범위에 매칭된 주문 라인 부분합이 기준이다.
 
 동시 중복 사용은 저장소의 조건부 원자 업데이트로 차단한다.
 
@@ -189,21 +193,23 @@ sequenceDiagram
     participant Client as Client
     participant OrderApi as OrderControllerV1
     participant Cancel as OrderCancelUseCase
+    participant Compensation as OrderCompensationHelper
     participant Stock as SkuRepository
-    participant Coupon as IssuedCouponRepository
+    participant CouponRepo as IssuedCouponRepository
     participant PG as PaymentGateway
 
     Client->>OrderApi: POST /api/v1/orders/{orderId}/cancel
-    OrderApi->>Cancel: cancel(orderId)
+    OrderApi->>Cancel: cancel(authenticated memberId, orderId)
 
     rect rgb(245, 248, 255)
-        note over Cancel,Coupon: Txn: 취소와 내부 복원
+        note over Cancel,CouponRepo: Txn: 취소와 내부 복원
         Cancel->>Cancel: 주문 조회
         Cancel->>Cancel: 기존 상태가 PAID였는지 기록
         Cancel->>Cancel: order.cancel()
-        Cancel->>Stock: SKU 재고 복원
+        Cancel->>Compensation: restore(order)
+        Compensation->>Stock: SKU 재고 복원
         alt usedCouponId 있음
-            Cancel->>Coupon: restoreByOrderId(orderId)
+            Compensation->>CouponRepo: restoreByOrderId(orderId)
         end
     end
 
@@ -263,7 +269,7 @@ payableAmount = totalAmount - discountAmount
 | 실제 PG 연동 | PG 시뮬레이터 직접 연동 | 승인번호 저장, 실패 코드 표준화, 환불 실패, 재시도 정책이 필요할 때 |
 | 환불 실패 상태 | 없음 | 실제 환불 API가 실패할 수 있을 때 |
 | 부분 취소 | 없음 | 라인 단위 환불, 재고 복원, 쿠폰 할인 배분이 필요할 때 |
-| 인증/인가 | 요청 `memberId` 기준 | 본인 주문과 본인 쿠폰만 처리하도록 강제할 때 |
+| 인증/인가 | 적용 | 인증 회원 본인의 주문과 쿠폰만 처리한다 |
 | 쿠폰 사용 멱등성 | 없음 | 같은 주문 재시도에서 같은 쿠폰 사용 결과를 안전하게 재확인해야 할 때 |
 
 ## 11. 구현 기준 파일

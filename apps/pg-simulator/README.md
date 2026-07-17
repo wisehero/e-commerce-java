@@ -3,7 +3,7 @@
 ### Description
 로컬 개발과 결제 연동 검증을 위해 PaymentGateway 를 시뮬레이션하는 App Module 입니다.
 PayPal의 주문·매입·환불과 Eximbay의 거래·매입·취소 개념만 단순화해 흉내 내며, 실제 PG API 규격을 복제하지는 않습니다.
-`local` 프로필로 실행 권장하며, 커머스 서비스와의 동시 실행을 위해 서버 포트가 조정되어 있습니다.
+`local` 프로필로 실행 권장하며, 커머스 서비스와의 동시 실행이 가능하도록 서버 포트가 조정되어 있습니다.
 - server port : 8082
 - actuator port : 8083
 
@@ -50,11 +50,20 @@ SET status = 'CAPTURED'
 WHERE status = 'SUCCESS';
 ```
 
-API 는 아래와 같이 주어지니, 커머스 서비스와 동시에 실행시킨 후 진행해주시면 됩니다.
+API 는 아래와 같이 제공됩니다.
 - 결제 요청 API
 - 결제 정보 확인 `by transactionKey`
 - 결제 정보 목록 조회 `by orderId`
 - 전체·부분 환불
+
+### Behavior
+
+- 모든 API는 `X-USER-ID` 헤더를 요구합니다.
+- 결제 요청은 100~500ms 지연 후 처리되며, 요청 단계에서 40% 확률로 `INTERNAL_ERROR`를 반환합니다.
+- 결제 요청이 저장되면 응답의 거래 상태는 먼저 `PENDING`입니다.
+- 저장 이후 비동기 이벤트가 1~5초 뒤 거래를 처리합니다. 처리 결과는 한도 초과 실패 20%, 잘못된 카드 실패 10%, 승인 성공 70% 확률입니다.
+- 처리 결과는 요청 body의 `callbackUrl`로 비동기 통지합니다. 현재 callback URL은 `http://localhost:8080`으로 시작해야 합니다.
+- `orderId`는 6자리 이상 문자열, `cardNo`는 `xxxx-xxxx-xxxx-xxxx` 형식, `amount`는 양의 정수여야 합니다.
 
 ```http request
 ### 결제 요청

@@ -14,7 +14,7 @@
 - `fix`: 버그 수정
 - `refactor`: 기능 변화 없는 구조 개선
 - `perf`: 성능 개선
-- `wiki`: 문서 (wiki·README·CLAUDE.md·주석)
+- `wiki`: 문서 (wiki·README·AGENTS.md·CLAUDE.md·주석)
 - `test`: 테스트 코드 추가·수정
 - `build`: Gradle·Docker·CI 설정
 - `chore`: 의존성 업데이트, 기타 잡일
@@ -22,7 +22,8 @@
 - `init`: 모듈·기능의 초기 셋업
 
 ## scope (도메인 범위)
-- 도메인명: `user`, `order`, `product`, `cart`, `payment` ...
+- 도메인명: `member`, `order`, `product`, `cart`, `coupon`, `brand`, `category`
+- 앱 모듈: `commerce-api`, `pg-simulator`
 - 인프라 모듈: `jpa`, `redis`, `kafka`
 - 횡단 관심사: `jackson`, `logging`, `monitoring`
 - 전 영역 변경: `project`
@@ -44,15 +45,15 @@
 
 ## 규칙
 - 한 커밋은 한 가지 의도만. 무관한 변경 섞지 않음.
-- DDD 5계층 중 여러 계층 관통한 변경은 도메인명으로 묶기 (`feat(user)`).
+- DDD 5계층 중 여러 계층 관통한 변경은 도메인명으로 묶기 (`feat(member)`).
 - 인프라 모듈 단독 변경은 모듈명 (`build(jpa)`).
 
 ## 예시
 ```
-feat(user): 회원가입 API 및 도메인 모델 추가
+feat(member): 회원가입 API 및 도메인 모델 추가
 
-User 도메인 모델과 UserJpaEntity를 분리하고
-이메일 중복 검증을 Facade로 위치시킴.
+Member 도메인 모델과 MemberJpaEntity를 분리하고
+이메일 중복 검증을 UseCase에 위치시킴.
 
 Refs: #3
 ```
@@ -65,5 +66,5 @@ OrderJpaEntity로 영속 매핑을 격리.
 ```
 
 ```
-build(project): Gradle 8.10 → 8.12 업그레이드
+build(project): Gradle 9.0.0 래퍼 적용
 ```

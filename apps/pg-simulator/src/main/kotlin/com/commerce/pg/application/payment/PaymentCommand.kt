@@ -19,4 +19,16 @@ object PaymentCommand {
             }
         }
     }
+
+    data class RefundPayment(
+        val userId: String,
+        val transactionKey: String,
+        val amount: Long,
+    ) {
+        fun validate() {
+            if (amount <= 0L) {
+                throw CoreException(ErrorType.BAD_REQUEST, "환불 금액은 0 보다 큰 정수여야 합니다.")
+            }
+        }
+    }
 }

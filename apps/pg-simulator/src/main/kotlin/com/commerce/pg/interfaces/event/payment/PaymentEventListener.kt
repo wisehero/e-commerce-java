@@ -17,12 +17,12 @@ class PaymentEventListener(
         val thresholdMillis = (1000L..5000L).random()
         Thread.sleep(thresholdMillis)
 
-        paymentApplicationService.handle(event.transactionKey)
+        paymentApplicationService.capture(event.transactionKey)
     }
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    fun handle(event: PaymentEvent.PaymentHandled) {
+    fun handle(event: PaymentEvent.PaymentStatusChanged) {
         paymentApplicationService.notifyTransactionResult(transactionKey = event.transactionKey)
     }
 }

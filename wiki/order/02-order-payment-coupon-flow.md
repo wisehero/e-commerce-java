@@ -148,9 +148,8 @@ WHERE id = :id
 결제 금액은 `totalAmount`가 아니라 `payableAmount`다.
 쿠폰 전액 할인으로 `payableAmount`가 0원이면 결제 게이트웨이를 호출하지 않고 성공 결과처럼 처리한다.
 
-현재 구현의 기본 결제 게이트웨이는 지연을 흉내 내고 항상 성공하는 스텁이다.
-별도 `apps/pg-simulator` 앱은 존재하지만, 현재 `commerce-api` 주문 흐름에는 해당 앱을 호출하는 `PaymentGateway` HTTP 어댑터가 없다.
-결제 실패 보상 흐름은 테스트에서 실패하는 `PaymentGateway` 대역으로 검증한다.
+현재 구현의 기본 결제 게이트웨이는 PG 시뮬레이터를 직접 호출한다.
+결제 실패 보상 흐름은 테스트에서 실패하는 `PaymentGateway` 대역과 PG 시뮬레이터 응답 매핑 테스트로 검증한다.
 
 ## 6. Txn2: 결제 결과 반영
 
@@ -267,7 +266,7 @@ payableAmount = totalAmount - discountAmount
 | 항목 | 현재 상태 | 필요해지는 시점 |
 |---|---|---|
 | 주문 멱등성 | 없음 | 클라이언트 재시도 시 이중 주문과 이중 결제를 막아야 할 때 |
-| 실제 PG 연동 | `commerce-api`는 스텁, `apps/pg-simulator`는 별도 앱으로만 존재 | 승인번호, 실패 코드, 환불 실패, 재시도 정책이 필요할 때 |
+| 실제 PG 연동 | PG 시뮬레이터 직접 연동 | 승인번호 저장, 실패 코드 표준화, 환불 실패, 재시도 정책이 필요할 때 |
 | 환불 실패 상태 | 없음 | 실제 환불 API가 실패할 수 있을 때 |
 | 부분 취소 | 없음 | 라인 단위 환불, 재고 복원, 쿠폰 할인 배분이 필요할 때 |
 | 인증/인가 | 적용 | 인증 회원 본인의 주문과 쿠폰만 처리한다 |
@@ -283,6 +282,7 @@ payableAmount = totalAmount - discountAmount
 | 주문 도메인 | `apps/commerce-api/src/main/java/com/commerce/domain/order/Order.java` |
 | 주문 라인 스냅샷 | `apps/commerce-api/src/main/java/com/commerce/domain/order/OrderLine.java` |
 | 결제 포트 | `apps/commerce-api/src/main/java/com/commerce/domain/order/PaymentGateway.java` |
+| PG 시뮬레이터 결제 구현 | `apps/commerce-api/src/main/java/com/commerce/infrastructure/order/PgSimulatorPaymentGateway.java` |
 | 결제 스텁 | `apps/commerce-api/src/main/java/com/commerce/infrastructure/order/StubPaymentGateway.java` |
 | 발급 쿠폰 도메인 | `apps/commerce-api/src/main/java/com/commerce/domain/coupon/IssuedCoupon.java` |
 | 쿠폰 조건부 사용/복원 | `apps/commerce-api/src/main/java/com/commerce/infrastructure/coupon/IssuedCouponJpaRepository.java` |

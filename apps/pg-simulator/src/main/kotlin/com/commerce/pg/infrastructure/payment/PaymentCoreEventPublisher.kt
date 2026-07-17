@@ -13,7 +13,7 @@ class PaymentCoreEventPublisher(
         applicationEventPublisher.publishEvent(event)
     }
 
-    override fun publish(event: PaymentEvent.PaymentHandled) {
+    override fun publish(event: PaymentEvent.PaymentStatusChanged) {
         applicationEventPublisher.publishEvent(event)
     }
 }

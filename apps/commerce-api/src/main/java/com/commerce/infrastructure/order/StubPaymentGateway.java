@@ -1,5 +1,6 @@
 package com.commerce.infrastructure.order;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import com.commerce.domain.order.PaymentGateway;
@@ -13,6 +14,7 @@ import com.commerce.support.error.ErrorType;
  * 실패→보상 경로는 테스트에서 실패하는 PaymentGateway 목으로 검증한다.
  */
 @Component
+@ConditionalOnProperty(name = "commerce.payment.gateway", havingValue = "stub")
 public class StubPaymentGateway implements PaymentGateway {
 
     private static final long LATENCY_MILLIS = 200L;

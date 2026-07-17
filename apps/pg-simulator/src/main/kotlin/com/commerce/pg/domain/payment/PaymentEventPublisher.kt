@@ -2,5 +2,5 @@ package com.commerce.pg.domain.payment
 
 interface PaymentEventPublisher {
     fun publish(event: PaymentEvent.PaymentCreated)
-    fun publish(event: PaymentEvent.PaymentHandled)
+    fun publish(event: PaymentEvent.PaymentStatusChanged)
 }

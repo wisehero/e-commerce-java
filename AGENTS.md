@@ -11,6 +11,7 @@ Java 25 + Spring Boot 4 기반 이커머스 백엔드. Gradle 멀티 모듈.
 ## 모듈 구조
 
 - `apps/commerce-api`: 실행 진입점 + 5계층 코드
+- `apps/pg-simulator`: 로컬 결제 연동 검증용 Kotlin Spring Boot 앱. `commerce-api`의 기본 `PaymentGateway` 구현이 HTTP로 직접 호출한다.
 - `modules/{jpa,redis,kafka}`: 인프라 베이스 (DataSource, ConnectionFactory, KafkaTemplate)
 - `supports/{jackson,logging,monitoring}`: 횡단 관심사
 

@@ -2,6 +2,8 @@ package com.commerce.pg.domain.payment
 
 enum class TransactionStatus {
     PENDING,
-    SUCCESS,
-    FAILED
+    CAPTURED,
+    PARTIALLY_REFUNDED,
+    REFUNDED,
+    FAILED,
 }

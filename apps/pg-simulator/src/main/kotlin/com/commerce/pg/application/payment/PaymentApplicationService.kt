@@ -30,7 +30,7 @@ class PaymentApplicationService(
 
         val transactionKey = transactionKeyGenerator.generate()
         val payment = paymentRepository.save(
-            Payment(
+            Payment.create(
                 transactionKey = transactionKey,
                 userId = command.userId,
                 orderId = command.orderId,
@@ -67,7 +67,7 @@ class PaymentApplicationService(
     }
 
     @Transactional
-    fun handle(transactionKey: String) {
+    fun capture(transactionKey: String) {
         val payment = paymentRepository.findByTransactionKey(transactionKey)
             ?: throw CoreException(ErrorType.NOT_FOUND, "(transactionKey: $transactionKey) 결제건이 존재하지 않습니다.")
 
@@ -75,14 +75,30 @@ class PaymentApplicationService(
         when (rate) {
             in RATE_LIMIT_EXCEEDED -> payment.limitExceeded()
             in RATE_INVALID_CARD -> payment.invalidCard()
-            else -> payment.approve()
+            else -> payment.capture()
         }
-        paymentEventPublisher.publish(event = PaymentEvent.PaymentHandled.from(payment))
+        val saved = paymentRepository.save(payment)
+        paymentEventPublisher.publish(event = PaymentEvent.PaymentStatusChanged.from(saved))
+    }
+
+    @Transactional
+    fun refund(command: PaymentCommand.RefundPayment): TransactionInfo {
+        command.validate()
+        val payment = paymentRepository.findByTransactionKey(command.userId, command.transactionKey)
+            ?: throw CoreException(
+                ErrorType.NOT_FOUND,
+                "(transactionKey: ${command.transactionKey}) 결제건이 존재하지 않습니다.",
+            )
+
+        payment.refund(command.amount)
+        val saved = paymentRepository.save(payment)
+        paymentEventPublisher.publish(event = PaymentEvent.PaymentStatusChanged.from(saved))
+        return TransactionInfo.from(saved)
     }
 
     fun notifyTransactionResult(transactionKey: String) {
         val payment = paymentRepository.findByTransactionKey(transactionKey)
             ?: throw CoreException(ErrorType.NOT_FOUND, "(transactionKey: $transactionKey) 결제건이 존재하지 않습니다.")
-        paymentRelay.notify(callbackUrl = payment.callbackUrl, transactionInfo = TransactionInfo.from(payment))
+        paymentRelay.notify(payment)
     }
 }

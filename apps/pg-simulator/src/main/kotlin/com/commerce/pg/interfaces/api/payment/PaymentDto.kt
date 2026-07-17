@@ -53,6 +53,8 @@ object PaymentDto {
         val cardType: CardTypeDto,
         val cardNo: String,
         val amount: Long,
+        val refundedAmount: Long,
+        val refundableAmount: Long,
         val status: TransactionStatusResponse,
         val reason: String?,
     ) {
@@ -64,6 +66,8 @@ object PaymentDto {
                     cardType = CardTypeDto.from(transactionInfo.cardType),
                     cardNo = transactionInfo.cardNo,
                     amount = transactionInfo.amount,
+                    refundedAmount = transactionInfo.refundedAmount,
+                    refundableAmount = transactionInfo.refundableAmount,
                     status = TransactionStatusResponse.from(transactionInfo.status),
                     reason = transactionInfo.reason,
                 )
@@ -73,6 +77,8 @@ object PaymentDto {
     data class TransactionResponse(
         val transactionKey: String,
         val status: TransactionStatusResponse,
+        val refundedAmount: Long,
+        val refundableAmount: Long,
         val reason: String?,
     ) {
         companion object {
@@ -80,6 +86,8 @@ object PaymentDto {
                 TransactionResponse(
                     transactionKey = transactionInfo.transactionKey,
                     status = TransactionStatusResponse.from(transactionInfo.status),
+                    refundedAmount = transactionInfo.refundedAmount,
+                    refundableAmount = transactionInfo.refundableAmount,
                     reason = transactionInfo.reason,
                 )
         }
@@ -96,6 +104,15 @@ object PaymentDto {
                     transactions = orderInfo.transactions.map { TransactionResponse.from(it) },
                 )
         }
+    }
+
+    data class RefundRequest(val amount: Long) {
+        fun toCommand(userId: String, transactionKey: String): PaymentCommand.RefundPayment =
+            PaymentCommand.RefundPayment(
+                userId = userId,
+                transactionKey = transactionKey,
+                amount = amount,
+            )
     }
 
     enum class CardTypeDto {
@@ -121,14 +138,18 @@ object PaymentDto {
 
     enum class TransactionStatusResponse {
         PENDING,
-        SUCCESS,
+        CAPTURED,
+        PARTIALLY_REFUNDED,
+        REFUNDED,
         FAILED,
         ;
 
         companion object {
             fun from(transactionStatus: TransactionStatus) = when (transactionStatus) {
                 TransactionStatus.PENDING -> PENDING
-                TransactionStatus.SUCCESS -> SUCCESS
+                TransactionStatus.CAPTURED -> CAPTURED
+                TransactionStatus.PARTIALLY_REFUNDED -> PARTIALLY_REFUNDED
+                TransactionStatus.REFUNDED -> REFUNDED
                 TransactionStatus.FAILED -> FAILED
             }
         }

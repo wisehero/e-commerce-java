@@ -48,6 +48,17 @@ class PaymentApi(
             .let { ApiResponse.success(it) }
     }
 
+    @PostMapping("/{transactionKey}/refunds")
+    fun refund(
+        userInfo: UserInfo,
+        @PathVariable("transactionKey") transactionKey: String,
+        @RequestBody request: PaymentDto.RefundRequest,
+    ): ApiResponse<PaymentDto.TransactionResponse> {
+        return paymentApplicationService.refund(request.toCommand(userInfo.userId, transactionKey))
+            .let { PaymentDto.TransactionResponse.from(it) }
+            .let { ApiResponse.success(it) }
+    }
+
     @GetMapping
     fun getTransactionsByOrder(
         userInfo: UserInfo,
